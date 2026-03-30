@@ -131,6 +131,14 @@ func (s *Server) setupRoutes() {
 	publicShareHandler := NewPublicShareHandler(s.db, s.storage)
 	publicShareHandler.RegisterRoutes(s.router)
 
+	// Trash handlers
+	trashHandler := NewTrashHandler(s.vfs, s.db)
+	trashHandler.RegisterRoutes(s.router, authMiddleware)
+
+	// Version handlers
+	versionHandler := NewVersionHandler(s.vfs)
+	versionHandler.RegisterRoutes(s.router, authMiddleware)
+
 	// Real-time event streaming (SSE)
 	s.events.RegisterRoutes(s.router, authMiddleware)
 
