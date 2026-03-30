@@ -20,17 +20,19 @@ VaultDrift is a **zero-dependency, single-binary** self-hosted file sync and sha
 
 | Feature | Status |
 |---------|--------|
-| Storage Abstraction (Local + S3) | |
-| Content-Defined Chunking + Deduplication | |
-| End-to-End Encryption (AES-256-GCM, X25519) | |
-| WebDAV Server (Class 2 compliant) | |
-| Delta Sync Protocol (Merkle trees + Vector clocks) | |
-| Web UI (React 19 + Tailwind CSS) | |
-| CLI Client with Sync Daemon | |
-| Desktop Tray App | |
-| Public Share Links | |
-| TOTP 2FA | |
-| RBAC Authorization | |
+| Storage Abstraction (Local + S3) | ✅ |
+| Content-Defined Chunking + Deduplication | ✅ |
+| End-to-End Encryption (AES-256-GCM, X25519) | ✅ |
+| Delta Sync Protocol | ✅ |
+| Web UI (Vanilla JS) | ✅ |
+| CLI Client with Sync | ✅ |
+| Desktop Tray App | ✅ |
+| Public Share Links | ✅ |
+| TOTP 2FA | ✅ |
+| RBAC Authorization | ✅ |
+| Real-time Sync (WebSocket/SSE) | ✅ |
+| File Versioning | ✅ |
+| Trash/Recycle Bin | ✅ |
 
 ## Quick Start
 
