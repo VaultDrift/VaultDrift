@@ -1,0 +1,186 @@
+package server
+
+import (
+	"fmt"
+	"log"
+	"net/http"
+	"runtime/debug"
+	"strings"
+	"time"
+)
+
+// RecoveryMiddleware recovers from panics and returns a 500 error.
+func RecoveryMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				log.Printf("panic: %v\n%s", err, debug.Stack())
+				http.Error(w, `{"error":"Internal server error"}`, http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
+// LoggingMiddleware logs HTTP requests.
+func LoggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		// Wrap response writer to capture status code
+		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
+		next.ServeHTTP(wrapped, r)
+
+		duration := time.Since(start)
+		log.Printf("%s %s %s %d %s",
+			r.Method,
+			r.URL.Path,
+			r.RemoteAddr,
+			wrapped.statusCode,
+			duration,
+		)
+	})
+}
+
+// responseWriter wraps http.ResponseWriter to capture status code.
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
+}
+
+// CORSMiddleware handles Cross-Origin Resource Sharing.
+func CORSMiddleware(next http.Handler, allowedOrigins []string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+
+		// Check if origin is allowed
+		if isOriginAllowed(origin, allowedOrigins) {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+			w.Header().Set("Access-Control-Max-Age", "86400")
+		}
+
+		// Handle preflight requests
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// isOriginAllowed checks if an origin is in the allowed list.
+func isOriginAllowed(origin string, allowed []string) bool {
+	if origin == "" {
+		return true // Allow non-browser requests
+	}
+
+	// If no restrictions, allow all
+	if len(allowed) == 0 || (len(allowed) == 1 && allowed[0] == "*") {
+		return true
+	}
+
+	for _, allowed := range allowed {
+		if allowed == origin {
+			return true
+		}
+		// Support wildcard subdomains
+		if strings.HasPrefix(allowed, "*.") {
+			suffix := allowed[1:] // Remove *
+			if strings.HasSuffix(origin, suffix) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// SecurityHeadersMiddleware adds security headers to responses.
+func SecurityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Security headers
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'")
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// RequestIDMiddleware adds a request ID to each request.
+func RequestIDMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestID := r.Header.Get("X-Request-ID")
+		if requestID == "" {
+			requestID = generateRequestID()
+		}
+
+		// Add to response header
+		w.Header().Set("X-Request-ID", requestID)
+
+		// Add to context for use in handlers
+		ctx := WithRequestID(r.Context(), requestID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// generateRequestID generates a simple request ID.
+func generateRequestID() string {
+	return fmt.Sprintf("%d", time.Now().UnixNano())
+}
+
+// RateLimitMiddleware simple rate limiting middleware.
+type RateLimitMiddleware struct {
+	requests map[string][]time.Time
+	limit    int
+	window   time.Duration
+}
+
+// NewRateLimitMiddleware creates a new rate limiter.
+func NewRateLimitMiddleware(limit int, window time.Duration) *RateLimitMiddleware {
+	return &RateLimitMiddleware{
+		requests: make(map[string][]time.Time),
+		limit:    limit,
+		window:   window,
+	}
+}
+
+// Limit returns the rate limiting middleware handler.
+func (rl *RateLimitMiddleware) Limit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		clientID := r.RemoteAddr // Could use API key or user ID for better tracking
+
+		now := time.Now()
+		cutoff := now.Add(-rl.window)
+
+		// Clean old requests and count current
+		var count int
+		for _, t := range rl.requests[clientID] {
+			if t.After(cutoff) {
+				count++
+			}
+		}
+
+		if count >= rl.limit {
+			http.Error(w, `{"error":"Rate limit exceeded"}`, http.StatusTooManyRequests)
+			return
+		}
+
+		// Add current request
+		rl.requests[clientID] = append(rl.requests[clientID], now)
+
+		next.ServeHTTP(w, r)
+	})
+}
