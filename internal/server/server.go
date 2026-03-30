@@ -13,6 +13,7 @@ import (
 	"github.com/vaultdrift/vaultdrift/internal/auth"
 	"github.com/vaultdrift/vaultdrift/internal/config"
 	"github.com/vaultdrift/vaultdrift/internal/db"
+	"github.com/vaultdrift/vaultdrift/internal/storage"
 	"github.com/vaultdrift/vaultdrift/internal/vfs"
 )
 
@@ -23,13 +24,14 @@ type Server struct {
 	db         *db.Manager
 	authSvc    *auth.Service
 	vfs        *vfs.VFS
+	storage    storage.Backend
 	config     config.ServerConfig
 	jwtSecret  []byte
 	rbac       *auth.RBAC
 }
 
 // NewServer creates a new HTTP server.
-func NewServer(cfg config.ServerConfig, database *db.Manager, authService *auth.Service, vfsService *vfs.VFS, jwtSecret []byte) *Server {
+func NewServer(cfg config.ServerConfig, database *db.Manager, authService *auth.Service, vfsService *vfs.VFS, store storage.Backend, jwtSecret []byte) *Server {
 	router := http.NewServeMux()
 
 	s := &Server{
@@ -37,6 +39,7 @@ func NewServer(cfg config.ServerConfig, database *db.Manager, authService *auth.
 		db:        database,
 		authSvc:   authService,
 		vfs:       vfsService,
+		storage:   store,
 		config:    cfg,
 		jwtSecret: jwtSecret,
 		rbac:      auth.NewRBAC(database),
@@ -113,6 +116,18 @@ func (s *Server) setupRoutes() {
 	// Upload handlers
 	uploadHandler := NewUploadHandler(s.vfs)
 	uploadHandler.RegisterRoutes(s.router, authMiddleware)
+
+	// Download handlers
+	downloadHandler := NewDownloadHandler(s.vfs, s.db, s.storage)
+	downloadHandler.RegisterRoutes(s.router, authMiddleware)
+
+	// Share handlers (authenticated)
+	shareHandler := NewShareHandler(s.vfs, s.db)
+	shareHandler.RegisterRoutes(s.router, authMiddleware)
+
+	// Public share handlers (no auth required)
+	publicShareHandler := NewPublicShareHandler(s.db, s.storage)
+	publicShareHandler.RegisterRoutes(s.router)
 
 	// Static files (for web UI)
 	// s.router.Handle("/", http.FileServer(http.Dir("./web/dist")))
