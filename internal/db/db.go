@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/vaultdrift/vaultdrift/cobaltdb" // CobaltDB driver
+	_ "github.com/glebarez/go-sqlite" // Pure Go SQLite driver (CGO-free)
 )
 
 // Manager handles database connections and provides data access methods.
@@ -36,7 +36,7 @@ func Open(cfg Config) (*Manager, error) {
 	}
 
 	// Open database connection
-	db, err := sql.Open("cobaltdb", cfg.Path)
+	db, err := sql.Open("sqlite", cfg.Path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}

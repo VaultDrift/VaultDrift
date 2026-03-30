@@ -9,6 +9,16 @@ const CurrentSchemaVersion = 1
 
 // migrate runs database migrations to bring the schema to the current version.
 func (m *Manager) migrate() error {
+	// Ensure schema_version table exists first
+	_, err := m.db.Exec(`CREATE TABLE IF NOT EXISTS schema_version (
+		id INTEGER PRIMARY KEY DEFAULT 1,
+		version INTEGER NOT NULL DEFAULT 0,
+		applied_at TEXT NOT NULL DEFAULT ''
+	)`)
+	if err != nil {
+		return fmt.Errorf("failed to create schema_version table: %w", err)
+	}
+
 	currentVersion, err := m.GetVersion()
 	if err != nil {
 		return fmt.Errorf("failed to get schema version: %w", err)
