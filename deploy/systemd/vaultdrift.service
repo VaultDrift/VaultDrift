@@ -1,0 +1,40 @@
+[Unit]
+Description=VaultDrift File Storage Server
+Documentation=https://github.com/vaultdrift/vaultdrift
+After=network.target
+
+[Service]
+Type=simple
+User=vaultdrift
+Group=vaultdrift
+WorkingDirectory=/var/lib/vaultdrift
+
+# Environment
+Environment="VAULTDRIFT_SERVER_PORT=8080"
+Environment="VAULTDRIFT_DATABASE_PATH=/var/lib/vaultdrift/vaultdrift.db"
+Environment="VAULTDRIFT_STORAGE_LOCAL_PATH=/var/lib/vaultdrift/storage"
+EnvironmentFile=-/etc/vaultdrift/environment
+
+# Binary
+ExecStart=/usr/local/bin/vaultdrift
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Restart policy
+Restart=on-failure
+RestartSec=5
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Security
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/vaultdrift
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target
