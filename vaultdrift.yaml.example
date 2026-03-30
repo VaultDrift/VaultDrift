@@ -1,0 +1,112 @@
+# VaultDrift Configuration Example
+# Copy this file to vaultdrift.yaml and customize for your deployment
+
+# Server configuration
+server:
+  # Bind address (0.0.0.0 for all interfaces)
+  host: 0.0.0.0
+
+  # Server port
+  port: 8443
+
+  # TLS configuration
+  tls:
+    enabled: true
+    auto_cert: true                # Use Let's Encrypt (requires base_url)
+    cert_file: ""                  # Path to TLS certificate (if not using auto_cert)
+    key_file: ""                   # Path to TLS key (if not using auto_cert)
+
+  # Public base URL (required for share links, callbacks)
+  base_url: "https://vault.example.com"
+
+# Storage backend configuration
+storage:
+  # Backend type: "local" or "s3"
+  backend: local
+
+  # Local filesystem storage
+  local:
+    data_dir: /var/lib/vaultdrift/data
+
+  # S3-compatible storage (AWS S3, MinIO, Cloudflare R2, etc.)
+  s3:
+    endpoint: ""                   # S3 endpoint URL (empty for AWS)
+    bucket: "vaultdrift"           # Bucket name
+    region: "us-east-1"            # Region
+    access_key: ""                 # Access key (or use env: VAULTDRIFT_STORAGE_S3_ACCESS_KEY)
+    secret_key: ""                 # Secret key (or use env: VAULTDRIFT_STORAGE_S3_SECRET_KEY)
+    use_path_style: false          # Use path-style URLs (needed for MinIO)
+
+# Database configuration (CobaltDB)
+database:
+  path: /var/lib/vaultdrift/db/vaultdrift.cdb
+
+# Authentication configuration
+auth:
+  # JWT secret (auto-generated if empty)
+  jwt_secret: ""
+
+  # Token TTL
+  access_token_ttl: 15m
+  refresh_token_ttl: 7d
+
+  # TOTP 2FA
+  totp_enabled: true
+
+  # Brute-force protection
+  max_login_attempts: 5
+  lockout_duration: 15m
+
+# Sync protocol configuration
+sync:
+  # Chunk size parameters (bytes)
+  chunk_size_min: 262144           # 256KB minimum
+  chunk_size_avg: 1048576          # 1MB average
+  chunk_size_max: 4194304          # 4MB maximum
+
+  # Concurrent transfers
+  max_concurrent_transfers: 4
+
+  # WebSocket for real-time sync
+  websocket_enabled: true
+
+# Encryption configuration
+encryption:
+  enabled: true
+  zero_knowledge: true             # E2E encryption mode
+
+  # Argon2id parameters for key derivation
+  argon2_time: 3
+  argon2_memory: 65536             # 64MB
+  argon2_threads: 4
+
+# Sharing configuration
+sharing:
+  public_links_enabled: true
+  max_expiry_days: 90
+  default_expiry_days: 7
+  password_required: false
+  max_download_limit: 1000
+
+# User management
+users:
+  registration_enabled: false      # Admin-only user creation
+  default_quota: 10737418240       # 10GB default (bytes)
+  max_quota: 0                     # 0 = unlimited
+
+# SMTP configuration (for notifications)
+smtp:
+  enabled: false
+  host: ""
+  port: 587
+  username: ""
+  password: ""                     # Use env: VAULTDRIFT_SMTP_PASSWORD
+  from: "noreply@vault.example.com"
+  tls: true
+
+# Logging configuration
+logging:
+  level: info                      # debug, info, warn, error
+  file: /var/lib/vaultdrift/logs/vaultdrift.log
+  audit: true                      # Enable audit logging
+  format: json                     # json or text
