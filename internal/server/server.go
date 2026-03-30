@@ -135,7 +135,8 @@ func (s *Server) setupRoutes() {
 	s.events.RegisterRoutes(s.router, authMiddleware)
 
 	// Static files (for web UI)
-	// s.router.Handle("/", http.FileServer(http.Dir("./web/dist")))
+	s.router.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./web/static"))))
+	s.router.HandleFunc("/", s.handleIndex)
 }
 
 // wrapMiddleware applies global middleware.
@@ -169,6 +170,11 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{
 		"status": "ready",
 	})
+}
+
+// handleIndex serves the main index.html
+func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "./web/index.html")
 }
 
 // writeJSON writes a JSON response.
