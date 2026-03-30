@@ -13,15 +13,17 @@ import (
 
 // ShareHandler handles share link API requests.
 type ShareHandler struct {
-	vfs *vfs.VFS
-	db  *db.Manager
+	vfs    *vfs.VFS
+	db     *db.Manager
+	events *EventNotifier
 }
 
 // NewShareHandler creates a new share handler.
-func NewShareHandler(vfsService *vfs.VFS, database *db.Manager) *ShareHandler {
+func NewShareHandler(vfsService *vfs.VFS, database *db.Manager, events *EventNotifier) *ShareHandler {
 	return &ShareHandler{
-		vfs: vfsService,
-		db:  database,
+		vfs:    vfsService,
+		db:     database,
+		events: events,
 	}
 }
 
@@ -172,6 +174,15 @@ func (h *ShareHandler) createShare(w http.ResponseWriter, r *http.Request) {
 		"share":     share,
 		"share_url": shareURL,
 	})
+
+	// Emit event for real-time sync
+	if h.events != nil {
+		h.events.NotifyUser(userID, SSEventShareCreated, map[string]any{
+			"share_id": share.ID,
+			"file_id":  fileID,
+			"type":     req.ShareType,
+		})
+	}
 }
 
 // listShares lists all shares for a file.
@@ -376,6 +387,14 @@ func (h *ShareHandler) revokeShare(w http.ResponseWriter, r *http.Request) {
 	}
 
 	SuccessResponse(w, map[string]string{"status": "revoked"})
+
+	// Emit event for real-time sync
+	if h.events != nil {
+		h.events.NotifyUser(userID, SSEventShareRevoked, map[string]any{
+			"share_id": shareID,
+			"file_id":  share.FileID,
+		})
+	}
 }
 
 // Helper functions

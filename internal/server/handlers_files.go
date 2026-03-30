@@ -11,13 +11,14 @@ import (
 
 // FileHandler handles file API requests.
 type FileHandler struct {
-	vfs *vfs.VFS
-	db  *db.Manager
+	vfs    *vfs.VFS
+	db     *db.Manager
+	events *EventNotifier
 }
 
 // NewFileHandler creates a new file handler.
-func NewFileHandler(vfsService *vfs.VFS, db *db.Manager) *FileHandler {
-	return &FileHandler{vfs: vfsService, db: db}
+func NewFileHandler(vfsService *vfs.VFS, database *db.Manager, events *EventNotifier) *FileHandler {
+	return &FileHandler{vfs: vfsService, db: database, events: events}
 }
 
 // RegisterRoutes registers the file routes.
@@ -156,6 +157,17 @@ func (h *FileHandler) createFile(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusCreated)
 	SuccessResponse(w, file)
+
+	// Emit event for real-time sync
+	if h.events != nil {
+		parentID := req.ParentID
+		if parentID == "" {
+			parentID = "root"
+		}
+		h.events.NotifyFileChange(userID, parentID, file.ID, SSEventFileCreated, map[string]any{
+			"file": file,
+		})
+	}
 }
 
 // updateFileRequest represents an update file request.
@@ -215,6 +227,19 @@ func (h *FileHandler) updateFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	SuccessResponse(w, map[string]string{"status": "updated"})
+
+	// Emit event for real-time sync
+	if h.events != nil {
+		eventType := SSEventFileUpdated
+		if req.ParentID != "" && req.ParentID != *file.ParentID {
+			eventType = SSEventFileMoved
+		}
+		h.events.NotifyFileChange(userID, *file.ParentID, fileID, eventType, map[string]any{
+			"file_id":   fileID,
+			"new_name":  req.Name,
+			"new_parent": req.ParentID,
+		})
+	}
 }
 
 // deleteFile moves a file to trash.
@@ -253,6 +278,14 @@ func (h *FileHandler) deleteFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	SuccessResponse(w, map[string]string{"status": "deleted"})
+
+	// Emit event for real-time sync
+	if h.events != nil {
+		h.events.NotifyFileChange(userID, *file.ParentID, fileID, SSEventFileDeleted, map[string]any{
+			"file_id": fileID,
+			"name":    file.Name,
+		})
+	}
 }
 
 // searchFiles searches for files.

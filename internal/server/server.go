@@ -28,6 +28,7 @@ type Server struct {
 	config     config.ServerConfig
 	jwtSecret  []byte
 	rbac       *auth.RBAC
+	events     *EventNotifier
 }
 
 // NewServer creates a new HTTP server.
@@ -43,6 +44,7 @@ func NewServer(cfg config.ServerConfig, database *db.Manager, authService *auth.
 		config:    cfg,
 		jwtSecret: jwtSecret,
 		rbac:      auth.NewRBAC(database),
+		events:    NewEventNotifier(vfsService, database),
 	}
 
 	// Setup routes
@@ -106,11 +108,11 @@ func (s *Server) setupRoutes() {
 	authMiddleware := NewAuthMiddleware(s.authSvc, nil, s.rbac, s.jwtSecret)
 
 	// File handlers
-	fileHandler := NewFileHandler(s.vfs, s.db)
+	fileHandler := NewFileHandler(s.vfs, s.db, s.events)
 	fileHandler.RegisterRoutes(s.router, authMiddleware)
 
 	// Folder handlers
-	folderHandler := NewFolderHandler(s.vfs)
+	folderHandler := NewFolderHandler(s.vfs, s.events)
 	folderHandler.RegisterRoutes(s.router, authMiddleware)
 
 	// Upload handlers
@@ -122,12 +124,15 @@ func (s *Server) setupRoutes() {
 	downloadHandler.RegisterRoutes(s.router, authMiddleware)
 
 	// Share handlers (authenticated)
-	shareHandler := NewShareHandler(s.vfs, s.db)
+	shareHandler := NewShareHandler(s.vfs, s.db, s.events)
 	shareHandler.RegisterRoutes(s.router, authMiddleware)
 
 	// Public share handlers (no auth required)
 	publicShareHandler := NewPublicShareHandler(s.db, s.storage)
 	publicShareHandler.RegisterRoutes(s.router)
+
+	// Real-time event streaming (SSE)
+	s.events.RegisterRoutes(s.router, authMiddleware)
 
 	// Static files (for web UI)
 	// s.router.Handle("/", http.FileServer(http.Dir("./web/dist")))
