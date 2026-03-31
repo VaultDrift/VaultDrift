@@ -331,7 +331,7 @@ vaultdrift/
 ### Long Term
 - [x] Federation between servers
 - [x] IPFS backend
-- [ ] Blockchain anchoring
+- [ ] ~~Blockchain anchoring~~ (removed from scope)
 - [ ] AI-powered organization
 
 ---
