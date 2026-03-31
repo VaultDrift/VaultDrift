@@ -1,8 +1,8 @@
 # Build stage
 FROM golang:1.26-alpine AS builder
 
-# Install build dependencies
-RUN apk add --no-cache git make nodejs npm
+# Install build dependencies including CGO requirements
+RUN apk add --no-cache git make nodejs npm gcc musl-dev
 
 WORKDIR /build
 
@@ -22,8 +22,8 @@ RUN CGO_ENABLED=1 go build -ldflags "-s -w" -o vaultdrift-server ./cmd/vaultdrif
 # Runtime stage
 FROM alpine:3.19
 
-# Install ca-certificates for TLS
-RUN apk add --no-cache ca-certificates
+# Install ca-certificates and SQLite runtime libraries
+RUN apk add --no-cache ca-certificates sqlite-libs
 
 # Create non-root user
 RUN adduser -D -s /bin/sh vaultdrift
