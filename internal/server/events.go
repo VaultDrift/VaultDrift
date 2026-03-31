@@ -52,6 +52,8 @@ type EventSubscriber struct {
 	UserID    string
 	FolderIDs map[string]bool
 	Events    chan *SSEEvent
+	mu        sync.RWMutex // Protects FolderIDs
+	closed    bool         // Prevents double close
 }
 
 // NewEventNotifier creates a new event notifier
@@ -89,7 +91,12 @@ func (n *EventNotifier) Unsubscribe(subID string) {
 	n.mu.Lock()
 	if sub, ok := n.subscribers[subID]; ok {
 		delete(n.subscribers, subID)
-		close(sub.Events)
+		sub.mu.Lock()
+		if !sub.closed {
+			sub.closed = true
+			close(sub.Events)
+		}
+		sub.mu.Unlock()
 	}
 	n.mu.Unlock()
 }
@@ -101,7 +108,9 @@ func (n *EventNotifier) SubscribeFolder(subID, folderID string) {
 	n.mu.RUnlock()
 
 	if ok {
+		sub.mu.Lock()
 		sub.FolderIDs[folderID] = true
+		sub.mu.Unlock()
 	}
 }
 
@@ -112,7 +121,9 @@ func (n *EventNotifier) UnsubscribeFolder(subID, folderID string) {
 	n.mu.RUnlock()
 
 	if ok {
+		sub.mu.Lock()
 		delete(sub.FolderIDs, folderID)
+		sub.mu.Unlock()
 	}
 }
 
@@ -161,7 +172,10 @@ func (n *EventNotifier) eventLoop() {
 			}
 			// Filter by folder if specified
 			if event.FolderID != "" {
-				if !sub.FolderIDs[event.FolderID] && !sub.FolderIDs["*"] {
+				sub.mu.RLock()
+				shouldSend := sub.FolderIDs[event.FolderID] || sub.FolderIDs["*"]
+				sub.mu.RUnlock()
+				if !shouldSend {
 					continue
 				}
 			}
@@ -171,6 +185,13 @@ func (n *EventNotifier) eventLoop() {
 
 		// Send to filtered subscribers
 		for _, sub := range subscribers {
+			sub.mu.RLock()
+			if sub.closed {
+				sub.mu.RUnlock()
+				continue
+			}
+			sub.mu.RUnlock()
+
 			select {
 			case sub.Events <- event:
 			default:

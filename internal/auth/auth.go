@@ -393,13 +393,8 @@ func (s *Service) createTOTPSession(userID string) string {
 	}
 	totpSessionsMu.Unlock()
 
-	// Auto-expire after 5 minutes
-	go func() {
-		time.Sleep(5 * time.Minute)
-		totpSessionsMu.Lock()
-		delete(totpSessions, sessionID)
-		totpSessionsMu.Unlock()
-	}()
+	// Note: Cleanup is done lazily in verifyTOTPSession to avoid goroutine leak
+	// Optional: Could add a periodic background cleanup
 
 	return sessionID
 }
