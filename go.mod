@@ -7,6 +7,7 @@ require (
 	github.com/getlantern/systray v1.2.2
 	github.com/glebarez/go-sqlite v1.22.0
 	github.com/gorilla/websocket v1.5.3
+	github.com/hanwen/go-fuse/v2 v2.9.0
 	golang.org/x/image v0.14.0
 )
 
@@ -23,7 +24,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/oxtoacart/bpool v0.0.0-20190530202638-03653db5a59c // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	golang.org/x/sys v0.15.0 // indirect
+	golang.org/x/sys v0.28.0 // indirect
 	modernc.org/libc v1.37.6 // indirect
 	modernc.org/mathutil v1.6.0 // indirect
 	modernc.org/memory v1.7.2 // indirect
