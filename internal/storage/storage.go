@@ -47,6 +47,8 @@ func NewBackend(cfg config.StorageConfig) (Backend, error) {
 		return NewLocalBackend(cfg.Local)
 	case "s3":
 		return NewS3Backend(cfg.S3)
+	case "ipfs":
+		return NewIPFSBackend(cfg.IPFS)
 	default:
 		return nil, fmt.Errorf("unknown storage backend: %s", cfg.Backend)
 	}

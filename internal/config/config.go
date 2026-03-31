@@ -39,9 +39,10 @@ type TLSConfig struct {
 
 // StorageConfig holds storage backend configuration.
 type StorageConfig struct {
-	Backend string       `yaml:"backend"` // "local" or "s3"
-	Local   LocalConfig  `yaml:"local"`
-	S3      S3Config     `yaml:"s3"`
+	Backend string      `yaml:"backend"` // "local", "s3", or "ipfs"
+	Local   LocalConfig `yaml:"local"`
+	S3      S3Config    `yaml:"s3"`
+	IPFS    IPFSConfig  `yaml:"ipfs"`
 }
 
 // LocalConfig holds local filesystem storage configuration.
@@ -57,6 +58,13 @@ type S3Config struct {
 	AccessKey    string `yaml:"access_key"`
 	SecretKey    string `yaml:"secret_key"`
 	UsePathStyle bool   `yaml:"use_path_style"`
+}
+
+// IPFSConfig holds IPFS storage configuration.
+type IPFSConfig struct {
+	APIAddr  string `yaml:"api_addr"`   // Multiaddr of IPFS API
+	Gateway  string `yaml:"gateway"`    // IPFS Gateway URL
+	PinFiles bool   `yaml:"pin_files"`  // Whether to pin stored files
 }
 
 // DatabaseConfig holds CobaltDB configuration.
