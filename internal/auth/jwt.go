@@ -2,8 +2,10 @@ package auth
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -88,8 +90,14 @@ func (j *JWTSigner) GenerateAccessToken(claims AccessClaims) (string, error) {
 	claims.Exp = now.Add(AccessTokenTTL).Unix()
 
 	header := JWTHeader{Alg: "HS256", Typ: "JWT"}
-	headerJSON, _ := json.Marshal(header)
-	claimsJSON, _ := json.Marshal(claims)
+	headerJSON, err := json.Marshal(header)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal header: %w", err)
+	}
+	claimsJSON, err := json.Marshal(claims)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal claims: %w", err)
+	}
 
 	encodedHeader := base64URLEncode(headerJSON)
 	encodedClaims := base64URLEncode(claimsJSON)
@@ -107,8 +115,14 @@ func (j *JWTSigner) GenerateRefreshToken(claims RefreshClaims) (string, error) {
 	claims.Exp = now.Add(RefreshTokenTTL).Unix()
 
 	header := JWTHeader{Alg: "HS256", Typ: "JWT"}
-	headerJSON, _ := json.Marshal(header)
-	claimsJSON, _ := json.Marshal(claims)
+	headerJSON, err := json.Marshal(header)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal header: %w", err)
+	}
+	claimsJSON, err := json.Marshal(claims)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal claims: %w", err)
+	}
 
 	encodedHeader := base64URLEncode(headerJSON)
 	encodedClaims := base64URLEncode(claimsJSON)
@@ -227,12 +241,13 @@ func (j *JWTSigner) GenerateTokenPair(userID, username string, roles []string, d
 	}, nil
 }
 
-// generateJTI generates a unique token identifier.
+// generateJTI generates a unique token identifier using crypto-secure random bytes.
 func generateJTI() string {
-	return fmt.Sprintf("%d-%d", time.Now().UnixNano(), randomInt())
-}
-
-// randomInt returns a random int for JTI uniqueness.
-func randomInt() int {
-	return int(time.Now().UnixNano() % 1000000)
+	// Generate 16 random bytes (128 bits of entropy)
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to timestamp + counter if crypto rand fails (extremely unlikely)
+		return fmt.Sprintf("%d-%d", time.Now().UnixNano(), time.Now().Unix())
+	}
+	return hex.EncodeToString(b)
 }

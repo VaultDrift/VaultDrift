@@ -17,6 +17,7 @@ type SyncDaemon struct {
 	watcher    *fsnotify.Watcher
 	stopCh     chan struct{}
 	wg         sync.WaitGroup
+	once       sync.Once
 	debounce   map[string]*time.Timer
 	debounceMu sync.Mutex
 }
@@ -57,8 +58,13 @@ func (d *SyncDaemon) Start() error {
 
 // Stop stops the sync daemon
 func (d *SyncDaemon) Stop() error {
-	close(d.stopCh)
-	d.watcher.Close()
+	// Use sync.Once to prevent double close panic
+	d.once.Do(func() {
+		close(d.stopCh)
+	})
+	if err := d.watcher.Close(); err != nil {
+		return fmt.Errorf("failed to close watcher: %w", err)
+	}
 	d.wg.Wait()
 
 	// Cancel all pending debounce timers
@@ -131,7 +137,9 @@ func (d *SyncDaemon) handleEvent(event fsnotify.Event) {
 		}
 		if info.IsDir() {
 			// New directory - add to watcher
-			d.watcher.Add(event.Name)
+			if err := d.watcher.Add(event.Name); err != nil {
+				fmt.Printf("  Warning: failed to watch directory %s: %v\n", event.Name, err)
+			}
 			fmt.Printf("  New directory: %s\n", event.Name)
 		} else {
 			// New file - debounce upload

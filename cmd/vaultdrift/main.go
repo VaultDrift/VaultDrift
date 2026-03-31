@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/vaultdrift/vaultdrift/internal/auth"
 	"github.com/vaultdrift/vaultdrift/internal/config"
@@ -82,7 +84,11 @@ func main() {
 	go func() {
 		<-sigChan
 		log.Println("Shutting down...")
-		srv.Stop(nil)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := srv.Stop(shutdownCtx); err != nil {
+			log.Printf("Error during shutdown: %v", err)
+		}
 	}()
 
 	// Start server

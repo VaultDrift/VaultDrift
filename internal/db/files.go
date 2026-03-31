@@ -266,7 +266,10 @@ func (m *Manager) UpdateFile(ctx context.Context, id string, updates map[string]
 		return fmt.Errorf("failed to update file: %w", err)
 	}
 
-	rows, _ := result.RowsAffected()
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
 	if rows == 0 {
 		return fmt.Errorf("file not found")
 	}

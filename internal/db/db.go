@@ -48,7 +48,7 @@ func Open(cfg Config) (*Manager, error) {
 
 	// Test connection
 	if err := db.Ping(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
@@ -59,13 +59,13 @@ func Open(cfg Config) (*Manager, error) {
 
 	// Run migrations
 	if err := m.migrate(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
 
 	// Seed default data
 	if err := m.seed(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to seed database: %w", err)
 	}
 

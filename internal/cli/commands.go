@@ -234,7 +234,7 @@ func (cli *CLI) handleStatus() error {
 	if err != nil {
 		fmt.Printf("Server Status: Offline (%v)\n", err)
 	} else {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		fmt.Printf("Server Status: Online (%d)\n", resp.StatusCode)
 	}
 
