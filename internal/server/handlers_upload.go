@@ -97,19 +97,19 @@ func NewUploadHandler(vfsService *vfs.VFS) *UploadHandler {
 // RegisterRoutes registers the upload routes.
 func (h *UploadHandler) RegisterRoutes(mux *http.ServeMux, auth *AuthMiddleware) {
 	// Create upload session
-	mux.Handle("POST /api/v1/uploads", auth.RequireAuth(http.HandlerFunc(h.createUpload)))
+	mux.Handle("POST /api/v1/uploads", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.createUpload))))
 
 	// Upload chunk
-	mux.Handle("PUT /api/v1/uploads/{id}/chunks/{index}", auth.RequireAuth(http.HandlerFunc(h.uploadChunk)))
+	mux.Handle("PUT /api/v1/uploads/{id}/chunks/{index}", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.uploadChunk))))
 
 	// Complete upload
-	mux.Handle("POST /api/v1/uploads/{id}/complete", auth.RequireAuth(http.HandlerFunc(h.completeUpload)))
+	mux.Handle("POST /api/v1/uploads/{id}/complete", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.completeUpload))))
 
 	// Get upload status
-	mux.Handle("GET /api/v1/uploads/{id}/status", auth.RequireAuth(http.HandlerFunc(h.getUploadStatus)))
+	mux.Handle("GET /api/v1/uploads/{id}/status", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.getUploadStatus))))
 
 	// Cancel/delete upload session
-	mux.Handle("DELETE /api/v1/uploads/{id}", auth.RequireAuth(http.HandlerFunc(h.cancelUpload)))
+	mux.Handle("DELETE /api/v1/uploads/{id}", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.cancelUpload))))
 }
 
 // createUpload creates a new upload session.
@@ -394,6 +394,12 @@ func (h *UploadHandler) getUploadStatus(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Check if session expired
+	if time.Now().After(session.ExpiresAt) {
+		ErrorResponse(w, http.StatusGone, "Upload session expired")
+		return
+	}
+
 	// Calculate uploaded bytes
 	session.ChunksMutex.RLock()
 	var uploadedBytes int64
@@ -446,6 +452,9 @@ func (h *UploadHandler) cancelUpload(w http.ResponseWriter, r *http.Request) {
 		ErrorResponse(w, http.StatusForbidden, "Access denied")
 		return
 	}
+
+	// Check if session expired - still allow cancellation to clean up
+	// (no expiration check for cancel)
 
 	// Clean up session and any uploaded chunks
 	h.sessionsMutex.Lock()
