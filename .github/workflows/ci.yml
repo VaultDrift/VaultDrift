@@ -41,7 +41,7 @@ jobs:
       run: |
         mkdir -p web/dist
         echo '<!DOCTYPE html><html><body>VaultDrift</body></html>' > web/dist/index.html
-        go test -v $(go list ./... | grep -v /desktop)
+        go test -v $(go list ./... | grep -v -E '(desktop|vaultdrift-desktop)')
 
   lint:
     runs-on: ubuntu-latest
