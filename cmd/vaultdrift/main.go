@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -94,7 +95,14 @@ func main() {
 func loadConfig(configPath, dataDir, host string, port int) (*config.Config, error) {
 	// If config path specified, load from there
 	if configPath != "" {
-		return config.Load(configPath)
+		cfg, err := config.Load(configPath)
+		if err == nil {
+			return cfg, nil
+		}
+		// If file doesn't exist, we'll try to create one
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
 	}
 
 	// Check for config in data directory
@@ -103,16 +111,14 @@ func loadConfig(configPath, dataDir, host string, port int) (*config.Config, err
 		return config.Load(configFile)
 	}
 
-	// Create default config
-	cfg := config.DefaultConfig()
-	cfg.Server.Host = host
-	cfg.Server.Port = port
-	cfg.Database.Path = dataDir + "/vaultdrift.db"
-	cfg.Storage.Backend = "local"
-	cfg.Storage.Local.DataDir = dataDir + "/storage"
+	// No config found - run interactive setup
+	fmt.Println("No configuration file found.")
+	fmt.Println()
 
-	// Ensure storage directory exists
-	os.MkdirAll(cfg.Storage.Local.DataDir, 0755)
+	cfg, err := config.InteractiveSetup()
+	if err != nil {
+		return nil, fmt.Errorf("interactive setup failed: %w", err)
+	}
 
 	return cfg, nil
 }
