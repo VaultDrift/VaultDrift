@@ -332,7 +332,7 @@ vaultdrift/
 - [x] Federation between servers
 - [x] IPFS backend
 - [ ] ~~Blockchain anchoring~~ (removed from scope)
-- [ ] AI-powered organization
+- [ ] ~~AI-powered organization~~ (removed from scope)
 
 ---
 
