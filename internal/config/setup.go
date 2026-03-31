@@ -258,7 +258,7 @@ func promptPassword(reader *bufio.Reader, question string) string {
 func readPassword() (string, error) {
 	// On Unix systems, we could use termios
 	// For simplicity, we'll use a workaround
-	fmt.Print("\033[8m") // Disable echo
+	fmt.Print("\033[8m")        // Disable echo
 	defer fmt.Print("\033[28m") // Re-enable echo
 
 	var password string
