@@ -2,9 +2,12 @@
 
 > **Your Files. Your Vault. Your Drift.**
 
-[![Go Version](https://img.shields.io/badge/go-1.26+-blue.svg)](https://golang.org)
+[![CI](https://github.com/VaultDrift/VaultDrift/actions/workflows/ci.yml/badge.svg)](https://github.com/VaultDrift/VaultDrift/actions/workflows/ci.yml)
+[![Go Version](https://img.shields.io/badge/go-1.23+-blue.svg)](https://golang.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
+[![Version](https://img.shields.io/badge/version-0.1.0--beta.1-orange.svg)]()
+
+⚠️ **Beta Status**: VaultDrift is currently in beta. APIs and features may change.
 
 VaultDrift is a **secure, distributed file storage system** with end-to-end encryption, content-defined chunking, and real-time synchronization. Built in pure Go with an embedded SQLite database, it provides a complete self-hosted cloud storage solution.
 
@@ -12,7 +15,6 @@ VaultDrift is a **secure, distributed file storage system** with end-to-end encr
 
 - **Zero external dependencies** - Everything from S3 signing to TOTP is built from scratch
 - **Single binary** - One file, complete functionality
-- **Pure Go** - No CGo, cross-compile everywhere
 - **End-to-end encryption** - Zero-knowledge architecture with AES-256-GCM
 - **Delta sync** - Only changed chunks transferred using Rabin CDC
 - **Real-time collaboration** - WebSocket-based live sync
@@ -45,7 +47,7 @@ VaultDrift is a **secure, distributed file storage system** with end-to-end encr
 
 ### Prerequisites
 
-- Go 1.26+
+- Go 1.23+
 - Node.js 20+ and npm (for web UI)
 - Git
 
@@ -63,10 +65,9 @@ cd web && npm install && cd ..
 # Build the web UI
 cd web && npm run build && cd ..
 
-# Build all binaries
-go build -o vaultdrift-server ./cmd/server
+# Build binaries (requires CGO for SQLite)
+go build -o vaultdrift-server ./cmd/vaultdrift
 go build -o vaultdrift-cli ./cmd/vaultdrift-cli
-go build -o vaultdrift-desktop ./cmd/vaultdrift-desktop
 ```
 
 ### Running the Server
@@ -114,8 +115,11 @@ Default server URL: `https://localhost:8443`
 
 ### Using the Desktop App
 
+> ⚠️ Desktop app is currently Linux-only due to systray/CGO requirements.
+
 ```bash
-# Run the desktop tray application
+# Run the desktop tray application (Linux only)
+go build -o vaultdrift-desktop ./cmd/vaultdrift-desktop
 ./vaultdrift-desktop
 
 # The app will appear in your system tray
@@ -453,6 +457,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 - [ ] Video streaming/transcoding
 - [ ] Federation between servers
 - [ ] IPFS backend support
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ## License
 
