@@ -32,6 +32,11 @@ jobs:
     - name: Download dependencies
       run: go mod download
 
+    - name: Create dummy web dist
+      run: |
+        mkdir -p web/dist
+        echo '<!DOCTYPE html><html><body>VaultDrift</body></html>' > web/dist/index.html
+
     - name: Run tests
       run: go test -v -coverprofile=coverage.out ./...
 
@@ -53,7 +58,10 @@ jobs:
         go-version: '1.23'
 
     - name: go vet
-      run: go vet ./...
+      run: |
+        mkdir -p web/dist
+        echo '<!DOCTYPE html><html><body>VaultDrift</body></html>' > web/dist/index.html
+        go vet ./...
 
     - name: go fmt check
       run: |
@@ -72,6 +80,11 @@ jobs:
       uses: actions/setup-go@v5
       with:
         go-version: '1.23'
+
+    - name: Create dummy web dist
+      run: |
+        mkdir -p web/dist
+        echo '<!DOCTYPE html><html><body>VaultDrift</body></html>' > web/dist/index.html
 
     - name: Build server
       run: go build -o vaultdrift-server ./cmd/vaultdrift
