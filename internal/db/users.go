@@ -6,10 +6,17 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/vaultdrift/vaultdrift/internal/util"
 )
 
 // CreateUser creates a new user.
 func (m *Manager) CreateUser(ctx context.Context, user *User) error {
+	// Generate ID if not provided
+	if user.ID == "" {
+		user.ID = util.GenerateUUID()
+	}
+
 	query := `INSERT INTO users (
 		id, username, email, display_name, password_hash, role,
 		quota_bytes, used_bytes, totp_secret, totp_enabled,
@@ -50,7 +57,7 @@ func (m *Manager) GetUserByID(ctx context.Context, id string) (*User, error) {
 
 	user := &User{}
 	var totpSecret, recoveryKeyHash, avatarChunkHash sql.NullString
-	var lastLoginAt sql.NullString
+	var lastLoginAt, createdAt, updatedAt sql.NullString
 
 	err := m.db.QueryRowContext(ctx, query, id).Scan(
 		&user.ID, &user.Username, &user.Email, &user.DisplayName,
@@ -58,7 +65,7 @@ func (m *Manager) GetUserByID(ctx context.Context, id string) (*User, error) {
 		&totpSecret, &user.TOTPEnabled,
 		&user.PublicKey, &user.EncryptedPrivateKey, &recoveryKeyHash,
 		&avatarChunkHash, &user.Status, &lastLoginAt,
-		&user.CreatedAt, &user.UpdatedAt,
+		&createdAt, &updatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("user not found")
@@ -79,6 +86,12 @@ func (m *Manager) GetUserByID(ctx context.Context, id string) (*User, error) {
 	if lastLoginAt.Valid {
 		t, _ := time.Parse(time.RFC3339, lastLoginAt.String)
 		user.LastLoginAt = &t
+	}
+	if createdAt.Valid {
+		user.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
+	}
+	if updatedAt.Valid {
+		user.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt.String)
 	}
 
 	return user, nil
@@ -94,7 +107,7 @@ func (m *Manager) GetUserByUsername(ctx context.Context, username string) (*User
 
 	user := &User{}
 	var totpSecret, recoveryKeyHash, avatarChunkHash sql.NullString
-	var lastLoginAt sql.NullString
+	var lastLoginAt, createdAt, updatedAt sql.NullString
 
 	err := m.db.QueryRowContext(ctx, query, username).Scan(
 		&user.ID, &user.Username, &user.Email, &user.DisplayName,
@@ -102,7 +115,7 @@ func (m *Manager) GetUserByUsername(ctx context.Context, username string) (*User
 		&totpSecret, &user.TOTPEnabled,
 		&user.PublicKey, &user.EncryptedPrivateKey, &recoveryKeyHash,
 		&avatarChunkHash, &user.Status, &lastLoginAt,
-		&user.CreatedAt, &user.UpdatedAt,
+		&createdAt, &updatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("user not found")
@@ -123,6 +136,12 @@ func (m *Manager) GetUserByUsername(ctx context.Context, username string) (*User
 	if lastLoginAt.Valid {
 		t, _ := time.Parse(time.RFC3339, lastLoginAt.String)
 		user.LastLoginAt = &t
+	}
+	if createdAt.Valid {
+		user.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
+	}
+	if updatedAt.Valid {
+		user.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt.String)
 	}
 
 	return user, nil
@@ -138,7 +157,7 @@ func (m *Manager) GetUserByEmail(ctx context.Context, email string) (*User, erro
 
 	user := &User{}
 	var totpSecret, recoveryKeyHash, avatarChunkHash sql.NullString
-	var lastLoginAt sql.NullString
+	var lastLoginAt, createdAt, updatedAt sql.NullString
 
 	err := m.db.QueryRowContext(ctx, query, email).Scan(
 		&user.ID, &user.Username, &user.Email, &user.DisplayName,
@@ -146,7 +165,7 @@ func (m *Manager) GetUserByEmail(ctx context.Context, email string) (*User, erro
 		&totpSecret, &user.TOTPEnabled,
 		&user.PublicKey, &user.EncryptedPrivateKey, &recoveryKeyHash,
 		&avatarChunkHash, &user.Status, &lastLoginAt,
-		&user.CreatedAt, &user.UpdatedAt,
+		&createdAt, &updatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("user not found")
@@ -167,6 +186,12 @@ func (m *Manager) GetUserByEmail(ctx context.Context, email string) (*User, erro
 	if lastLoginAt.Valid {
 		t, _ := time.Parse(time.RFC3339, lastLoginAt.String)
 		user.LastLoginAt = &t
+	}
+	if createdAt.Valid {
+		user.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
+	}
+	if updatedAt.Valid {
+		user.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt.String)
 	}
 
 	return user, nil
@@ -197,7 +222,7 @@ func (m *Manager) UpdateUser(ctx context.Context, id string, updates map[string]
 	}
 
 	setClauses := make([]string, 0, len(updates))
-	args := make([]any, 0, len(updates)+1)
+	args := make([]any, 0, len(updates)+2)
 
 	for field, value := range updates {
 		if !allowedFields[field] {
@@ -207,11 +232,12 @@ func (m *Manager) UpdateUser(ctx context.Context, id string, updates map[string]
 		args = append(args, value)
 	}
 
+	// Append updated_at value, then id for WHERE clause
+	args = append(args, time.Now().UTC().Format(time.RFC3339))
 	args = append(args, id)
 
 	query := fmt.Sprintf("UPDATE users SET %s, updated_at = ? WHERE id = ?",
 		strings.Join(setClauses, ", "))
-	args = append([]any{time.Now().UTC().Format(time.RFC3339)}, args...)
 
 	result, err := m.db.ExecContext(ctx, query, args...)
 	if err != nil {
@@ -290,7 +316,7 @@ func (m *Manager) ListUsers(ctx context.Context, offset, limit int, filter UserF
 	for rows.Next() {
 		user := &User{}
 		var totpSecret, recoveryKeyHash, avatarChunkHash sql.NullString
-		var lastLoginAt sql.NullString
+		var lastLoginAt, createdAt, updatedAt sql.NullString
 
 		err := rows.Scan(
 			&user.ID, &user.Username, &user.Email, &user.DisplayName,
@@ -298,7 +324,7 @@ func (m *Manager) ListUsers(ctx context.Context, offset, limit int, filter UserF
 			&totpSecret, &user.TOTPEnabled,
 			&user.PublicKey, &user.EncryptedPrivateKey, &recoveryKeyHash,
 			&avatarChunkHash, &user.Status, &lastLoginAt,
-			&user.CreatedAt, &user.UpdatedAt,
+			&createdAt, &updatedAt,
 		)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to scan user: %w", err)
@@ -316,6 +342,12 @@ func (m *Manager) ListUsers(ctx context.Context, offset, limit int, filter UserF
 		if lastLoginAt.Valid {
 			t, _ := time.Parse(time.RFC3339, lastLoginAt.String)
 			user.LastLoginAt = &t
+		}
+		if createdAt.Valid {
+			user.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
+		}
+		if updatedAt.Valid {
+			user.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt.String)
 		}
 
 		users = append(users, user)

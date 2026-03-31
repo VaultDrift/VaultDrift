@@ -33,16 +33,28 @@ func (m *Manager) GetSessionByRefreshToken(ctx context.Context, refreshToken str
 	FROM sessions WHERE refresh_token = ?`
 
 	session := &Session{}
+	var lastActiveAt, expiresAt, createdAt sql.NullString
+
 	err := m.db.QueryRowContext(ctx, query, refreshToken).Scan(
 		&session.ID, &session.UserID, &session.RefreshToken, &session.DeviceName,
 		&session.DeviceType, &session.IPAddress, &session.UserAgent,
-		&session.LastActiveAt, &session.ExpiresAt, &session.CreatedAt,
+		&lastActiveAt, &expiresAt, &createdAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("session not found")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get session: %w", err)
+	}
+
+	if lastActiveAt.Valid {
+		session.LastActiveAt, _ = time.Parse(time.RFC3339, lastActiveAt.String)
+	}
+	if expiresAt.Valid {
+		session.ExpiresAt, _ = time.Parse(time.RFC3339, expiresAt.String)
+	}
+	if createdAt.Valid {
+		session.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
 	}
 
 	return session, nil
@@ -63,14 +75,27 @@ func (m *Manager) GetSessionsByUser(ctx context.Context, userID string) ([]*Sess
 	sessions := make([]*Session, 0)
 	for rows.Next() {
 		session := &Session{}
+		var lastActiveAt, expiresAt, createdAt sql.NullString
+
 		err := rows.Scan(
 			&session.ID, &session.UserID, &session.RefreshToken, &session.DeviceName,
 			&session.DeviceType, &session.IPAddress, &session.UserAgent,
-			&session.LastActiveAt, &session.ExpiresAt, &session.CreatedAt,
+			&lastActiveAt, &expiresAt, &createdAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan session: %w", err)
 		}
+
+		if lastActiveAt.Valid {
+			session.LastActiveAt, _ = time.Parse(time.RFC3339, lastActiveAt.String)
+		}
+		if expiresAt.Valid {
+			session.ExpiresAt, _ = time.Parse(time.RFC3339, expiresAt.String)
+		}
+		if createdAt.Valid {
+			session.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
+		}
+
 		sessions = append(sessions, session)
 	}
 

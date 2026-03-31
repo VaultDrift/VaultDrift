@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"github.com/vaultdrift/vaultdrift/internal/db"
 	"github.com/vaultdrift/vaultdrift/internal/storage"
 	"github.com/vaultdrift/vaultdrift/internal/vfs"
+	"github.com/vaultdrift/vaultdrift/web"
 )
 
 // Server is the HTTP server for VaultDrift.
@@ -104,6 +106,10 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("GET /health", s.handleHealth)
 	s.router.HandleFunc("GET /ready", s.handleReady)
 
+	// Auth handlers (public)
+	authHandler := NewAuthHandler(s.authSvc)
+	authHandler.RegisterRoutes(s.router)
+
 	// Create auth middleware
 	authMiddleware := NewAuthMiddleware(s.authSvc, nil, s.rbac, s.jwtSecret)
 
@@ -142,9 +148,9 @@ func (s *Server) setupRoutes() {
 	// Real-time event streaming (SSE)
 	s.events.RegisterRoutes(s.router, authMiddleware)
 
-	// Static files (for web UI)
-	s.router.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./web/static"))))
-	s.router.HandleFunc("/", s.handleIndex)
+	// Static files (for web UI) - embedded from web/dist
+	webFS := web.FS()
+	s.router.Handle("/", http.FileServer(webFS))
 }
 
 // wrapMiddleware applies global middleware.
@@ -180,16 +186,9 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleIndex serves the main index.html
-func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "./web/index.html")
-}
-
 // writeJSON writes a JSON response.
 func writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	// Simple JSON encoding - in production use proper JSON encoding
-	fmt.Fprintf(w, `{"status":%d,"data":%v}
-`, status, data)
+	json.NewEncoder(w).Encode(data)
 }

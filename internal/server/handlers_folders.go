@@ -23,22 +23,22 @@ func NewFolderHandler(vfsService *vfs.VFS, events *EventNotifier) *FolderHandler
 // RegisterRoutes registers the folder routes.
 func (h *FolderHandler) RegisterRoutes(mux *http.ServeMux, auth *AuthMiddleware) {
 	// List folder contents
-	mux.Handle("GET /api/v1/folders", auth.RequireAuth(http.HandlerFunc(h.listFolders)))
+	mux.Handle("GET /api/v1/folders", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.listFolders))))
 
 	// Get folder details
-	mux.Handle("GET /api/v1/folders/{id}", auth.RequireAuth(http.HandlerFunc(h.getFolder)))
+	mux.Handle("GET /api/v1/folders/{id}", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.getFolder))))
 
 	// Create new folder
-	mux.Handle("POST /api/v1/folders", auth.RequireAuth(http.HandlerFunc(h.createFolder)))
+	mux.Handle("POST /api/v1/folders", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.createFolder))))
 
 	// Update folder (rename/move)
-	mux.Handle("PUT /api/v1/folders/{id}", auth.RequireAuth(http.HandlerFunc(h.updateFolder)))
+	mux.Handle("PUT /api/v1/folders/{id}", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.updateFolder))))
 
 	// Delete folder
-	mux.Handle("DELETE /api/v1/folders/{id}", auth.RequireAuth(http.HandlerFunc(h.deleteFolder)))
+	mux.Handle("DELETE /api/v1/folders/{id}", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.deleteFolder))))
 
 	// Get breadcrumbs for a folder
-	mux.Handle("GET /api/v1/folders/{id}/breadcrumbs", auth.RequireAuth(http.HandlerFunc(h.getBreadcrumbs)))
+	mux.Handle("GET /api/v1/folders/{id}/breadcrumbs", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.getBreadcrumbs))))
 }
 
 // listFolders lists folders in a parent folder.

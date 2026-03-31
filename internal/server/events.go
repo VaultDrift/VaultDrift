@@ -183,10 +183,10 @@ func (n *EventNotifier) eventLoop() {
 // RegisterRoutes registers SSE routes
 func (n *EventNotifier) RegisterRoutes(mux *http.ServeMux, auth *AuthMiddleware) {
 	// SSE endpoint for real-time events
-	mux.Handle("GET /api/v1/events", auth.RequireAuth(http.HandlerFunc(n.HandleSSE)))
+	mux.Handle("GET /api/v1/events", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(n.HandleSSE))))
 
 	// Long-polling fallback
-	mux.Handle("GET /api/v1/events/poll", auth.RequireAuth(http.HandlerFunc(n.HandleLongPoll)))
+	mux.Handle("GET /api/v1/events/poll", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(n.HandleLongPoll))))
 }
 
 // HandleSSE handles Server-Sent Events HTTP requests

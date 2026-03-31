@@ -30,25 +30,25 @@ func NewShareHandler(vfsService *vfs.VFS, database *db.Manager, events *EventNot
 // RegisterRoutes registers the share routes.
 func (h *ShareHandler) RegisterRoutes(mux *http.ServeMux, auth *AuthMiddleware) {
 	// Create share link
-	mux.Handle("POST /api/v1/files/{id}/shares", auth.RequireAuth(http.HandlerFunc(h.createShare)))
+	mux.Handle("POST /api/v1/files/{id}/shares", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.createShare))))
 
 	// List shares for a file
-	mux.Handle("GET /api/v1/files/{id}/shares", auth.RequireAuth(http.HandlerFunc(h.listShares)))
+	mux.Handle("GET /api/v1/files/{id}/shares", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.listShares))))
 
 	// List all shares created by user
-	mux.Handle("GET /api/v1/shares", auth.RequireAuth(http.HandlerFunc(h.listMyShares)))
+	mux.Handle("GET /api/v1/shares", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.listMyShares))))
 
 	// List shares received by user
-	mux.Handle("GET /api/v1/shares/received", auth.RequireAuth(http.HandlerFunc(h.listReceivedShares)))
+	mux.Handle("GET /api/v1/shares/received", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.listReceivedShares))))
 
 	// Get share details
-	mux.Handle("GET /api/v1/shares/{id}", auth.RequireAuth(http.HandlerFunc(h.getShare)))
+	mux.Handle("GET /api/v1/shares/{id}", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.getShare))))
 
 	// Update share
-	mux.Handle("PUT /api/v1/shares/{id}", auth.RequireAuth(http.HandlerFunc(h.updateShare)))
+	mux.Handle("PUT /api/v1/shares/{id}", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.updateShare))))
 
 	// Revoke/delete share
-	mux.Handle("DELETE /api/v1/shares/{id}", auth.RequireAuth(http.HandlerFunc(h.revokeShare)))
+	mux.Handle("DELETE /api/v1/shares/{id}", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.revokeShare))))
 }
 
 // createShareRequest represents a request to create a share.

@@ -33,11 +33,12 @@ func (m *Manager) GetDeviceByID(ctx context.Context, id string) (*Device, error)
 
 	device := &Device{}
 	var lastSyncAt, merkleRoot sql.NullString
+	var createdAt, updatedAt sql.NullString
 
 	err := m.db.QueryRowContext(ctx, query, id).Scan(
 		&device.ID, &device.UserID, &device.Name, &device.DeviceType, &device.OS,
 		&device.SyncFolder, &lastSyncAt, &device.VectorClock, &merkleRoot,
-		&device.IsActive, &device.CreatedAt, &device.UpdatedAt,
+		&device.IsActive, &createdAt, &updatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("device not found")
@@ -52,6 +53,12 @@ func (m *Manager) GetDeviceByID(ctx context.Context, id string) (*Device, error)
 	}
 	if merkleRoot.Valid {
 		device.MerkleRoot = &merkleRoot.String
+	}
+	if createdAt.Valid {
+		device.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
+	}
+	if updatedAt.Valid {
+		device.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt.String)
 	}
 
 	return device, nil
@@ -73,11 +80,12 @@ func (m *Manager) GetDevicesByUser(ctx context.Context, userID string) ([]*Devic
 	for rows.Next() {
 		device := &Device{}
 		var lastSyncAt, merkleRoot sql.NullString
+		var createdAt, updatedAt sql.NullString
 
 		err := rows.Scan(
 			&device.ID, &device.UserID, &device.Name, &device.DeviceType, &device.OS,
 			&device.SyncFolder, &lastSyncAt, &device.VectorClock, &merkleRoot,
-			&device.IsActive, &device.CreatedAt, &device.UpdatedAt,
+			&device.IsActive, &createdAt, &updatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan device: %w", err)
@@ -89,6 +97,12 @@ func (m *Manager) GetDevicesByUser(ctx context.Context, userID string) ([]*Devic
 		}
 		if merkleRoot.Valid {
 			device.MerkleRoot = &merkleRoot.String
+		}
+		if createdAt.Valid {
+			device.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
+		}
+		if updatedAt.Valid {
+			device.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt.String)
 		}
 
 		devices = append(devices, device)
@@ -175,15 +189,21 @@ func (m *Manager) GetSyncState(ctx context.Context, deviceID, fileID string) (*S
 	FROM sync_state WHERE device_id = ? AND file_id = ?`
 
 	state := &SyncState{}
+	var syncedAt sql.NullString
+
 	err := m.db.QueryRowContext(ctx, query, deviceID, fileID).Scan(
 		&state.ID, &state.DeviceID, &state.FileID, &state.ManifestID,
-		&state.VectorClock, &state.SyncedAt,
+		&state.VectorClock, &syncedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("sync state not found")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sync state: %w", err)
+	}
+
+	if syncedAt.Valid {
+		state.SyncedAt, _ = time.Parse(time.RFC3339, syncedAt.String)
 	}
 
 	return state, nil
@@ -203,13 +223,20 @@ func (m *Manager) GetSyncStatesByDevice(ctx context.Context, deviceID string) ([
 	states := make([]*SyncState, 0)
 	for rows.Next() {
 		state := &SyncState{}
+		var syncedAt sql.NullString
+
 		err := rows.Scan(
 			&state.ID, &state.DeviceID, &state.FileID, &state.ManifestID,
-			&state.VectorClock, &state.SyncedAt,
+			&state.VectorClock, &syncedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan sync state: %w", err)
 		}
+
+		if syncedAt.Valid {
+			state.SyncedAt, _ = time.Parse(time.RFC3339, syncedAt.String)
+		}
+
 		states = append(states, state)
 	}
 

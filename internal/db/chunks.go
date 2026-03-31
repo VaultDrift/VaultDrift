@@ -29,15 +29,21 @@ func (m *Manager) GetChunk(ctx context.Context, hash string) (*Chunk, error) {
 	FROM chunks WHERE hash = ?`
 
 	chunk := &Chunk{}
+	var createdAt sql.NullString
+
 	err := m.db.QueryRowContext(ctx, query, hash).Scan(
 		&chunk.Hash, &chunk.SizeBytes, &chunk.StorageBackend, &chunk.StoragePath,
-		&chunk.RefCount, &chunk.IsEncrypted, &chunk.CreatedAt,
+		&chunk.RefCount, &chunk.IsEncrypted, &createdAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("chunk not found")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get chunk: %w", err)
+	}
+
+	if createdAt.Valid {
+		chunk.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
 	}
 
 	return chunk, nil
@@ -104,13 +110,20 @@ func (m *Manager) ListOrphanedChunks(ctx context.Context) ([]*Chunk, error) {
 	chunks := make([]*Chunk, 0)
 	for rows.Next() {
 		chunk := &Chunk{}
+		var createdAt sql.NullString
+
 		err := rows.Scan(
 			&chunk.Hash, &chunk.SizeBytes, &chunk.StorageBackend, &chunk.StoragePath,
-			&chunk.RefCount, &chunk.IsEncrypted, &chunk.CreatedAt,
+			&chunk.RefCount, &chunk.IsEncrypted, &createdAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan chunk: %w", err)
 		}
+
+		if createdAt.Valid {
+			chunk.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
+		}
+
 		chunks = append(chunks, chunk)
 	}
 

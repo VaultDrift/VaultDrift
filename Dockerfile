@@ -1,8 +1,8 @@
 # Build stage
-FROM golang:1.23-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 # Install build dependencies
-RUN apk add --no-cache git make
+RUN apk add --no-cache git make nodejs npm
 
 WORKDIR /build
 
@@ -13,8 +13,11 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the binary
-RUN go build -ldflags "-s -w" -o vaultdrift ./cmd/vaultdrift
+# Build web UI
+cd web && npm install && npm run build && cd ..
+
+# Build the server binary
+RUN CGO_ENABLED=0 go build -ldflags "-s -w" -o vaultdrift-server ./cmd/server
 
 # Runtime stage
 FROM alpine:3.19
@@ -26,10 +29,13 @@ RUN apk add --no-cache ca-certificates
 RUN adduser -D -s /bin/sh vaultdrift
 
 # Create data directory
-RUN mkdir -p /var/lib/vaultdrift && chown -R vaultdrift:vaultdrift /var/lib/vaultdrift
+RUN mkdir -p /data && chown -R vaultdrift:vaultdrift /data
 
 # Copy binary from builder
-COPY --from=builder /build/vaultdrift /usr/local/bin/vaultdrift
+COPY --from=builder /build/vaultdrift-server /usr/local/bin/vaultdrift-server
+
+# Copy web assets
+COPY --from=builder /build/web/dist /app/web/dist
 
 # Switch to non-root user
 USER vaultdrift
@@ -38,8 +44,8 @@ USER vaultdrift
 EXPOSE 8443
 
 # Volume for data persistence
-VOLUME ["/var/lib/vaultdrift"]
+VOLUME ["/data"]
 
 # Entrypoint
-ENTRYPOINT ["vaultdrift"]
+ENTRYPOINT ["vaultdrift-server"]
 CMD ["serve"]

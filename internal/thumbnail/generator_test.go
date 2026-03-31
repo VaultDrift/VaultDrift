@@ -149,11 +149,16 @@ func TestGeneratorGenerate(t *testing.T) {
 func TestGeneratorGet(t *testing.T) {
 	cacheDir := t.TempDir()
 	gen := NewGenerator(nil, cacheDir)
-	gen.Init()
+	if err := gen.Init(); err != nil {
+		t.Fatalf("Failed to init generator: %v", err)
+	}
 
 	// Generate a thumbnail first
 	img := createTestImage(500, 500)
-	data, _ := encodePNG(img)
+	data, err := encodePNG(img)
+	if err != nil {
+		t.Fatalf("Failed to encode PNG: %v", err)
+	}
 	gen.Generate("existing-file", "image/png", data)
 
 	t.Run("GetExistingThumbnail", func(t *testing.T) {
@@ -178,11 +183,16 @@ func TestGeneratorGet(t *testing.T) {
 func TestGeneratorDelete(t *testing.T) {
 	cacheDir := t.TempDir()
 	gen := NewGenerator(nil, cacheDir)
-	gen.Init()
+	if err := gen.Init(); err != nil {
+		t.Fatalf("Failed to init generator: %v", err)
+	}
 
 	// Generate thumbnails
 	img := createTestImage(500, 500)
-	data, _ := encodePNG(img)
+	data, err := encodePNG(img)
+	if err != nil {
+		t.Fatalf("Failed to encode PNG: %v", err)
+	}
 	gen.Generate("delete-me", "image/png", data)
 
 	// Verify they exist

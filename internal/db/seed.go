@@ -132,5 +132,20 @@ func (m *Manager) seed() error {
 		}
 	}
 
+	// Seed default admin user (password: admin)
+	// Pre-computed PHC hash for "admin"
+	adminPasswordHash := "$argon2id$v=19$m=65536,t=3,p=1$6IOdsT/ZB3Yc39wdhST32A$0psObWN9M9SCF1zLWMsE9lef9JFfK2pqsY1o2M3x2zg"
+
+	adminID, _ := util.GenerateUUIDv7()
+	_, err = m.db.Exec(
+		`INSERT INTO users (id, username, email, display_name, password_hash, role, quota_bytes, used_bytes,
+		status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		adminID, "admin", "admin@localhost", "Administrator", adminPasswordHash, "admin",
+		10737418240, 0, "active", now, now,
+	)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }

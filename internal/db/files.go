@@ -43,12 +43,13 @@ func (m *Manager) GetFileByID(ctx context.Context, id string) (*File, error) {
 
 	file := &File{}
 	var parentID, manifestID, checksum, trashedAt sql.NullString
+	var createdAt, updatedAt sql.NullString
 
 	err := m.db.QueryRowContext(ctx, query, id).Scan(
 		&file.ID, &file.UserID, &parentID, &file.Name, &file.NameEncrypted,
 		&file.Type, &file.SizeBytes, &file.MimeType, &manifestID, &checksum,
 		&file.IsEncrypted, &file.EncryptedKey, &file.IsTrashed, &trashedAt,
-		&file.Version, &file.CreatedAt, &file.UpdatedAt,
+		&file.Version, &createdAt, &updatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("file not found")
@@ -70,26 +71,46 @@ func (m *Manager) GetFileByID(ctx context.Context, id string) (*File, error) {
 		t, _ := time.Parse(time.RFC3339, trashedAt.String)
 		file.TrashedAt = &t
 	}
+	if createdAt.Valid {
+		file.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
+	}
+	if updatedAt.Valid {
+		file.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt.String)
+	}
 
 	return file, nil
 }
 
 // GetFileByPath retrieves a file by user ID, parent ID, and name.
 func (m *Manager) GetFileByPath(ctx context.Context, userID string, parentID *string, name string) (*File, error) {
-	query := `SELECT id, user_id, parent_id, name, name_encrypted, type,
-		size_bytes, mime_type, manifest_id, checksum,
-		is_encrypted, encrypted_key, is_trashed, trashed_at,
-		version, created_at, updated_at
-	FROM files WHERE user_id = ? AND parent_id IS ? AND name = ? AND is_trashed = 0`
+	var query string
+	var args []any
+
+	if parentID == nil || *parentID == "" {
+		query = `SELECT id, user_id, parent_id, name, name_encrypted, type,
+			size_bytes, mime_type, manifest_id, checksum,
+			is_encrypted, encrypted_key, is_trashed, trashed_at,
+			version, created_at, updated_at
+		FROM files WHERE user_id = ? AND parent_id IS NULL AND name = ? AND is_trashed = 0`
+		args = []any{userID, name}
+	} else {
+		query = `SELECT id, user_id, parent_id, name, name_encrypted, type,
+			size_bytes, mime_type, manifest_id, checksum,
+			is_encrypted, encrypted_key, is_trashed, trashed_at,
+			version, created_at, updated_at
+		FROM files WHERE user_id = ? AND parent_id = ? AND name = ? AND is_trashed = 0`
+		args = []any{userID, *parentID, name}
+	}
 
 	file := &File{}
 	var parentIDVal, manifestID, checksum, trashedAt sql.NullString
+	var createdAt, updatedAt sql.NullString
 
-	err := m.db.QueryRowContext(ctx, query, userID, parentID, name).Scan(
+	err := m.db.QueryRowContext(ctx, query, args...).Scan(
 		&file.ID, &file.UserID, &parentIDVal, &file.Name, &file.NameEncrypted,
 		&file.Type, &file.SizeBytes, &file.MimeType, &manifestID, &checksum,
 		&file.IsEncrypted, &file.EncryptedKey, &file.IsTrashed, &trashedAt,
-		&file.Version, &file.CreatedAt, &file.UpdatedAt,
+		&file.Version, &createdAt, &updatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("file not found")
@@ -111,6 +132,12 @@ func (m *Manager) GetFileByPath(ctx context.Context, userID string, parentID *st
 		t, _ := time.Parse(time.RFC3339, trashedAt.String)
 		file.TrashedAt = &t
 	}
+	if createdAt.Valid {
+		file.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
+	}
+	if updatedAt.Valid {
+		file.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt.String)
+	}
 
 	return file, nil
 }
@@ -121,16 +148,33 @@ func (m *Manager) ListDirectory(ctx context.Context, userID string, parentID *st
 		opts.Limit = 100
 	}
 
-	query := `SELECT id, user_id, parent_id, name, name_encrypted, type,
-		size_bytes, mime_type, manifest_id, checksum,
-		is_encrypted, encrypted_key, is_trashed, trashed_at,
-		version, created_at, updated_at
-	FROM files
-	WHERE user_id = ? AND parent_id IS ? AND is_trashed = 0
-	ORDER BY type DESC, name ASC
-	LIMIT ? OFFSET ?`
+	// Handle root folder case (parentID is nil or empty)
+	var query string
+	var args []any
 
-	rows, err := m.db.QueryContext(ctx, query, userID, parentID, opts.Limit, opts.Offset)
+	if parentID == nil || *parentID == "" {
+		query = `SELECT id, user_id, parent_id, name, name_encrypted, type,
+			size_bytes, mime_type, manifest_id, checksum,
+			is_encrypted, encrypted_key, is_trashed, trashed_at,
+			version, created_at, updated_at
+		FROM files
+		WHERE user_id = ? AND parent_id IS NULL AND is_trashed = 0
+		ORDER BY type DESC, name ASC
+		LIMIT ? OFFSET ?`
+		args = []any{userID, opts.Limit, opts.Offset}
+	} else {
+		query = `SELECT id, user_id, parent_id, name, name_encrypted, type,
+			size_bytes, mime_type, manifest_id, checksum,
+			is_encrypted, encrypted_key, is_trashed, trashed_at,
+			version, created_at, updated_at
+		FROM files
+		WHERE user_id = ? AND parent_id = ? AND is_trashed = 0
+		ORDER BY type DESC, name ASC
+		LIMIT ? OFFSET ?`
+		args = []any{userID, *parentID, opts.Limit, opts.Offset}
+	}
+
+	rows, err := m.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list directory: %w", err)
 	}
@@ -140,12 +184,13 @@ func (m *Manager) ListDirectory(ctx context.Context, userID string, parentID *st
 	for rows.Next() {
 		file := &File{}
 		var parentIDVal, manifestID, checksum, trashedAt sql.NullString
+		var createdAt, updatedAt sql.NullString
 
 		err := rows.Scan(
 			&file.ID, &file.UserID, &parentIDVal, &file.Name, &file.NameEncrypted,
 			&file.Type, &file.SizeBytes, &file.MimeType, &manifestID, &checksum,
 			&file.IsEncrypted, &file.EncryptedKey, &file.IsTrashed, &trashedAt,
-			&file.Version, &file.CreatedAt, &file.UpdatedAt,
+			&file.Version, &createdAt, &updatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan file: %w", err)
@@ -163,6 +208,12 @@ func (m *Manager) ListDirectory(ctx context.Context, userID string, parentID *st
 		if trashedAt.Valid {
 			t, _ := time.Parse(time.RFC3339, trashedAt.String)
 			file.TrashedAt = &t
+		}
+		if createdAt.Valid {
+			file.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
+		}
+		if updatedAt.Valid {
+			file.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt.String)
 		}
 
 		files = append(files, file)
@@ -279,12 +330,13 @@ func (m *Manager) ListTrash(ctx context.Context, userID string) ([]*File, error)
 	for rows.Next() {
 		file := &File{}
 		var parentID, manifestID, checksum, trashedAt sql.NullString
+		var createdAt, updatedAt sql.NullString
 
 		err := rows.Scan(
 			&file.ID, &file.UserID, &parentID, &file.Name, &file.NameEncrypted,
 			&file.Type, &file.SizeBytes, &file.MimeType, &manifestID, &checksum,
 			&file.IsEncrypted, &file.EncryptedKey, &file.IsTrashed, &trashedAt,
-			&file.Version, &file.CreatedAt, &file.UpdatedAt,
+			&file.Version, &createdAt, &updatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan file: %w", err)
@@ -302,6 +354,12 @@ func (m *Manager) ListTrash(ctx context.Context, userID string) ([]*File, error)
 		if trashedAt.Valid {
 			t, _ := time.Parse(time.RFC3339, trashedAt.String)
 			file.TrashedAt = &t
+		}
+		if createdAt.Valid {
+			file.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
+		}
+		if updatedAt.Valid {
+			file.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt.String)
 		}
 
 		files = append(files, file)
@@ -366,12 +424,13 @@ func (m *Manager) SearchFiles(ctx context.Context, userID, query string, limit i
 	for rows.Next() {
 		file := &File{}
 		var parentID, manifestID, checksum, trashedAt sql.NullString
+		var createdAt, updatedAt sql.NullString
 
 		err := rows.Scan(
 			&file.ID, &file.UserID, &parentID, &file.Name, &file.NameEncrypted,
 			&file.Type, &file.SizeBytes, &file.MimeType, &manifestID, &checksum,
 			&file.IsEncrypted, &file.EncryptedKey, &file.IsTrashed, &trashedAt,
-			&file.Version, &file.CreatedAt, &file.UpdatedAt,
+			&file.Version, &createdAt, &updatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan file: %w", err)
@@ -389,6 +448,12 @@ func (m *Manager) SearchFiles(ctx context.Context, userID, query string, limit i
 		if trashedAt.Valid {
 			t, _ := time.Parse(time.RFC3339, trashedAt.String)
 			file.TrashedAt = &t
+		}
+		if createdAt.Valid {
+			file.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
+		}
+		if updatedAt.Valid {
+			file.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt.String)
 		}
 
 		files = append(files, file)
@@ -422,12 +487,13 @@ func (m *Manager) RecentFiles(ctx context.Context, userID string, limit int) ([]
 	for rows.Next() {
 		file := &File{}
 		var parentID, manifestID, checksum, trashedAt sql.NullString
+		var createdAt, updatedAt sql.NullString
 
 		err := rows.Scan(
 			&file.ID, &file.UserID, &parentID, &file.Name, &file.NameEncrypted,
 			&file.Type, &file.SizeBytes, &file.MimeType, &manifestID, &checksum,
 			&file.IsEncrypted, &file.EncryptedKey, &file.IsTrashed, &trashedAt,
-			&file.Version, &file.CreatedAt, &file.UpdatedAt,
+			&file.Version, &createdAt, &updatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan file: %w", err)
@@ -445,6 +511,12 @@ func (m *Manager) RecentFiles(ctx context.Context, userID string, limit int) ([]
 		if trashedAt.Valid {
 			t, _ := time.Parse(time.RFC3339, trashedAt.String)
 			file.TrashedAt = &t
+		}
+		if createdAt.Valid {
+			file.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
+		}
+		if updatedAt.Valid {
+			file.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt.String)
 		}
 
 		files = append(files, file)

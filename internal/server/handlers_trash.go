@@ -22,16 +22,16 @@ func NewTrashHandler(vfsService *vfs.VFS, database *db.Manager) *TrashHandler {
 // RegisterRoutes registers the trash routes.
 func (h *TrashHandler) RegisterRoutes(mux *http.ServeMux, auth *AuthMiddleware) {
 	// List trashed items
-	mux.Handle("GET /api/v1/trash", auth.RequireAuth(http.HandlerFunc(h.listTrash)))
+	mux.Handle("GET /api/v1/trash", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.listTrash))))
 
 	// Restore item from trash
-	mux.Handle("POST /api/v1/trash/{id}/restore", auth.RequireAuth(http.HandlerFunc(h.restoreItem)))
+	mux.Handle("POST /api/v1/trash/{id}/restore", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.restoreItem))))
 
 	// Permanently delete item
-	mux.Handle("DELETE /api/v1/trash/{id}", auth.RequireAuth(http.HandlerFunc(h.permanentDelete)))
+	mux.Handle("DELETE /api/v1/trash/{id}", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.permanentDelete))))
 
 	// Empty trash
-	mux.Handle("DELETE /api/v1/trash", auth.RequireAuth(http.HandlerFunc(h.emptyTrash)))
+	mux.Handle("DELETE /api/v1/trash", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.emptyTrash))))
 }
 
 // listTrash lists all items in the user's trash.

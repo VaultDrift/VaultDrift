@@ -24,25 +24,25 @@ func NewFileHandler(vfsService *vfs.VFS, database *db.Manager, events *EventNoti
 // RegisterRoutes registers the file routes.
 func (h *FileHandler) RegisterRoutes(mux *http.ServeMux, auth *AuthMiddleware) {
 	// List files in a folder
-	mux.Handle("GET /api/v1/files", auth.RequireAuth(http.HandlerFunc(h.listFiles)))
+	mux.Handle("GET /api/v1/files", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.listFiles))))
 
 	// Get file details
-	mux.Handle("GET /api/v1/files/{id}", auth.RequireAuth(http.HandlerFunc(h.getFile)))
+	mux.Handle("GET /api/v1/files/{id}", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.getFile))))
 
 	// Create new file entry (metadata only)
-	mux.Handle("POST /api/v1/files", auth.RequireAuth(http.HandlerFunc(h.createFile)))
+	mux.Handle("POST /api/v1/files", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.createFile))))
 
 	// Update file (rename/move)
-	mux.Handle("PUT /api/v1/files/{id}", auth.RequireAuth(http.HandlerFunc(h.updateFile)))
+	mux.Handle("PUT /api/v1/files/{id}", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.updateFile))))
 
 	// Delete file (move to trash)
-	mux.Handle("DELETE /api/v1/files/{id}", auth.RequireAuth(http.HandlerFunc(h.deleteFile)))
+	mux.Handle("DELETE /api/v1/files/{id}", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.deleteFile))))
 
 	// Search files
-	mux.Handle("GET /api/v1/files/search", auth.RequireAuth(http.HandlerFunc(h.searchFiles)))
+	mux.Handle("GET /api/v1/files/search", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.searchFiles))))
 
 	// Get recent files
-	mux.Handle("GET /api/v1/files/recent", auth.RequireAuth(http.HandlerFunc(h.recentFiles)))
+	mux.Handle("GET /api/v1/files/recent", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.recentFiles))))
 }
 
 // listFiles lists files in a folder.

@@ -1,59 +1,74 @@
-VERSION    := $(shell git describe --tags --always 2>/dev/null || echo "dev")
-LDFLAGS    := -s -w -X main.version=$(VERSION)
+VERSION    := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+BUILD_TIME := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown")
+COMMIT     := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+LDFLAGS    := -s -w -X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME) -X main.Commit=$(COMMIT)
 GOOS       := $(shell go env GOOS)
 GOARCH     := $(shell go env GOARCH)
 
-.PHONY: build build-cli build-desktop build-all build-web test lint clean docker
+.PHONY: build build-cli build-desktop build-all build-web test lint clean docker help
 
 # Default build target
-build: build-server
+.DEFAULT_GOAL := help
 
-# Server binary
-build-server:
-	@echo "Building VaultDrift server..."
-	go build -ldflags "$(LDFLAGS)" -o bin/vaultdrift ./cmd/vaultdrift
+help: ## Show this help message
+	@echo "VaultDrift Build System"
+	@echo "======================="
+	@echo ""
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-# CLI client
-build-cli:
-	@echo "Building VaultDrift CLI..."
-	go build -ldflags "$(LDFLAGS)" -o bin/vaultdrift-cli ./cmd/vaultdrift-cli
+build: build-web ## Build server binary for current platform (default)
+	@echo "Building VaultDrift server $(VERSION)..."
+	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/vaultdrift-server ./cmd/server
 
-# Desktop tray app
-build-desktop:
-	@echo "Building VaultDrift Desktop..."
-	go build -ldflags "$(LDFLAGS)" -o bin/vaultdrift-desktop ./cmd/vaultdrift-desktop
+build-cli: ## Build CLI client binary
+	@echo "Building VaultDrift CLI $(VERSION)..."
+	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/vaultdrift-cli ./cmd/vaultdrift-cli
 
-# Web UI
-build-web:
+build-desktop: ## Build desktop tray app binary
+	@echo "Building VaultDrift Desktop $(VERSION)..."
+	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/vaultdrift-desktop ./cmd/vaultdrift-desktop
+
+build-web: ## Build web UI
 	@echo "Building Web UI..."
-	cd web && npm run build
+	cd web && npm install && npm run build
 
-# Build all binaries for current platform
-build-all: build-server build-cli build-desktop
+build-all: build-web ## Build all binaries for current platform
+	@echo "Building all binaries..."
+	$(MAKE) build build-cli build-desktop
 
-# Cross-compile for all platforms
-build-cross:
+build-cross: build-web ## Cross-compile for all platforms
 	@echo "Cross-compiling for all platforms..."
-	GOOS=linux   GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/vaultdrift-linux-amd64 ./cmd/vaultdrift
-	GOOS=linux   GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o bin/vaultdrift-linux-arm64 ./cmd/vaultdrift
-	GOOS=darwin  GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/vaultdrift-darwin-amd64 ./cmd/vaultdrift
-	GOOS=darwin  GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o bin/vaultdrift-darwin-arm64 ./cmd/vaultdrift
-	GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o bin/vaultdrift-windows-amd64.exe ./cmd/vaultdrift
+	mkdir -p dist
+	# Server binaries
+	GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o dist/vaultdrift-server-linux-amd64 ./cmd/server
+	GOOS=linux   GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o dist/vaultdrift-server-linux-arm64 ./cmd/server
+	GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o dist/vaultdrift-server-darwin-amd64 ./cmd/server
+	GOOS=darwin  GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o dist/vaultdrift-server-darwin-arm64 ./cmd/server
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o dist/vaultdrift-server-windows-amd64.exe ./cmd/server
+	# CLI binaries
+	GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o dist/vaultdrift-cli-linux-amd64 ./cmd/vaultdrift-cli
+	GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o dist/vaultdrift-cli-darwin-amd64 ./cmd/vaultdrift-cli
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o dist/vaultdrift-cli-windows-amd64.exe ./cmd/vaultdrift-cli
+	@echo "Cross-compile complete! Binaries in ./dist/"
 
-# Run tests
-test:
+test: ## Run all tests
+	@echo "Running tests..."
 	go test -race -coverprofile=coverage.out ./...
 
-# Run integration tests
-test-integration:
+test-coverage: test ## Run tests and show coverage report
+	@echo "Coverage report:"
+	go tool cover -func=coverage.out
+
+test-integration: ## Run integration tests
+	@echo "Running integration tests..."
 	go test -tags=integration -race ./...
 
-# Run benchmarks
-bench:
-	go test -bench=. -benchmem ./internal/chunk/ ./internal/crypto/ ./internal/sync/
+bench: ## Run benchmarks
+	@echo "Running benchmarks..."
+	go test -bench=. -benchmem ./internal/chunk/... ./internal/crypto/... ./internal/sync/...
 
-# Lint code
-lint:
+lint: ## Run linters
+	@echo "Running linters..."
 	go vet ./...
 	@if command -v staticcheck >/dev/null 2>&1; then \
 		staticcheck ./...; \
@@ -61,66 +76,51 @@ lint:
 		echo "staticcheck not installed, skipping..."; \
 	fi
 
-# Format code
-fmt:
+fmt: ## Format code
+	@echo "Formatting code..."
 	go fmt ./...
 
-# Clean build artifacts
-clean:
-	rm -rf bin/ coverage.out
-	cd web && rm -rf dist/
+clean: ## Clean build artifacts
+	@echo "Cleaning build artifacts..."
+	rm -rf bin/ dist/ coverage.out
+	rm -rf web/dist/
 
-# Build Docker image
-docker:
-	docker build -t vaultdrift/vaultdrift:$(VERSION) .
+docker-build: ## Build Docker image
+	@echo "Building Docker image..."
+	docker build -t vaultdrift/vaultdrift:$(VERSION) -t vaultdrift/vaultdrift:latest .
 
-# Development server with hot reload (requires air)
-dev:
-	@if command -v air >/dev/null 2>&1; then \
-		air; \
-	else \
-		echo "air not installed. Install with: go install github.com/cosmtrek/air@latest"; \
-		exit 1; \
-	fi
+docker-up: ## Start with Docker Compose
+	@echo "Starting with Docker Compose..."
+	docker-compose up -d
 
-# Install locally
-install: build
-	cp bin/vaultdrift $(GOPATH)/bin/
-	cp bin/vaultdrift-cli $(GOPATH)/bin/
+docker-down: ## Stop Docker Compose
+	@echo "Stopping Docker Compose..."
+	docker-compose down
 
-# Generate code (if needed)
-generate:
+run: build ## Build and run server
+	./bin/vaultdrift-server serve
+
+dev: ## Run development server
+	@echo "Starting development server..."
+	go run ./cmd/server serve --dev
+
+dev-web: ## Run web UI development server
+	@echo "Starting web UI dev server..."
+	cd web && npm run dev
+
+install: build build-cli ## Install binaries to GOPATH/bin
+	@echo "Installing binaries..."
+	cp bin/vaultdrift-server $(GOPATH)/bin/ 2>/dev/null || cp bin/vaultdrift-server ~/go/bin/
+	cp bin/vaultdrift-cli $(GOPATH)/bin/ 2>/dev/null || cp bin/vaultdrift-cli ~/go/bin/
+
+generate: ## Generate code (mocks, etc.)
+	@echo "Generating code..."
 	go generate ./...
 
-# Check for vulnerabilities
-vuln:
+vuln: ## Check for vulnerabilities
 	@if command -v govulncheck >/dev/null 2>&1; then \
 		govulncheck ./...; \
 	else \
 		echo "govulncheck not installed. Install with: go install golang.org/x/vuln/cmd/govulncheck@latest"; \
 		exit 1; \
 	fi
-
-# Show help
-help:
-	@echo "VaultDrift Makefile targets:"
-	@echo ""
-	@echo "  build          - Build server binary (default)"
-	@echo "  build-server   - Build server binary"
-	@echo "  build-cli      - Build CLI client"
-	@echo "  build-desktop  - Build desktop tray app"
-	@echo "  build-web      - Build Web UI"
-	@echo "  build-all      - Build all binaries for current platform"
-	@echo "  build-cross    - Cross-compile for all platforms"
-	@echo "  test           - Run unit tests"
-	@echo "  test-integration - Run integration tests"
-	@echo "  bench          - Run benchmarks"
-	@echo "  lint           - Run linters"
-	@echo "  fmt            - Format code"
-	@echo "  clean          - Clean build artifacts"
-	@echo "  docker         - Build Docker image"
-	@echo "  dev            - Run development server with hot reload"
-	@echo "  install        - Install binaries to GOPATH/bin"
-	@echo "  generate       - Run code generation"
-	@echo "  vuln           - Check for vulnerabilities"
-	@echo "  help           - Show this help"

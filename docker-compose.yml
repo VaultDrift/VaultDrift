@@ -5,27 +5,60 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: vaultdrift/vaultdrift:latest
     container_name: vaultdrift
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "8443:8443"
     volumes:
       - ./data:/data
-      - ./config.yaml:/app/config.yaml:ro
+      - ./config.yaml:/data/config.yaml:ro
     environment:
-      - VAULTDRIFT_SERVER_PORT=8080
+      - VAULTDRIFT_SERVER_HOST=0.0.0.0
+      - VAULTDRIFT_SERVER_PORT=8443
       - VAULTDRIFT_DATABASE_PATH=/data/vaultdrift.db
-      - VAULTDRIFT_STORAGE_LOCAL_PATH=/data/storage
+      - VAULTDRIFT_STORAGE_LOCAL_DATADIR=/data/storage
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "https://localhost:8443/health", "--no-check-certificate"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-    networks:
-      - vaultdrift-network
 
-  # Optional: Use with S3/MinIO backend
+  # Optional: Traefik reverse proxy with Let's Encrypt
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${LETSENCRYPT_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./letsencrypt:/letsencrypt
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.vaultdrift.rule=Host(`${VAULTDRIFT_DOMAIN}`)"
+      - "traefik.http.routers.vaultdrift.entrypoints=websecure"
+      - "traefik.http.routers.vaultdrift.tls.certresolver=letsencrypt"
+      - "traefik.http.services.vaultdrift.loadbalancer.server.port=8443"
+      - "traefik.http.services.vaultdrift.loadbalancer.server.scheme=https"
+      - "traefik.http.services.vaultdrift.loadbalancer.serversTransport=insecureTransport"
+      - "traefik.http.serversTransports.insecureTransport.insecureSkipVerify=true"
+    profiles:
+      - traefik
+
+  # Optional: MinIO for S3 backend testing
   minio:
     image: minio/minio:latest
     container_name: vaultdrift-minio
@@ -39,14 +72,8 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     command: server /data --console-address ":9001"
-    networks:
-      - vaultdrift-network
     profiles:
       - s3
 
 volumes:
   minio-data:
-
-networks:
-  vaultdrift-network:
-    driver: bridge

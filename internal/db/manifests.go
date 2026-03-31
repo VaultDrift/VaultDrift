@@ -37,16 +37,21 @@ func (m *Manager) GetManifest(ctx context.Context, id string) (*Manifest, error)
 
 	manifest := &Manifest{}
 	var chunksJSON string
+	var createdAt sql.NullString
 
 	err := m.db.QueryRowContext(ctx, query, id).Scan(
 		&manifest.ID, &manifest.FileID, &manifest.Version, &manifest.SizeBytes,
-		&manifest.ChunkCount, &chunksJSON, &manifest.Checksum, &manifest.DeviceID, &manifest.CreatedAt,
+		&manifest.ChunkCount, &chunksJSON, &manifest.Checksum, &manifest.DeviceID, &createdAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("manifest not found")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get manifest: %w", err)
+	}
+
+	if createdAt.Valid {
+		manifest.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
 	}
 
 	if err := json.Unmarshal([]byte(chunksJSON), &manifest.Chunks); err != nil {
@@ -63,16 +68,21 @@ func (m *Manager) GetLatestManifest(ctx context.Context, fileID string) (*Manife
 
 	manifest := &Manifest{}
 	var chunksJSON string
+	var createdAt sql.NullString
 
 	err := m.db.QueryRowContext(ctx, query, fileID).Scan(
 		&manifest.ID, &manifest.FileID, &manifest.Version, &manifest.SizeBytes,
-		&manifest.ChunkCount, &chunksJSON, &manifest.Checksum, &manifest.DeviceID, &manifest.CreatedAt,
+		&manifest.ChunkCount, &chunksJSON, &manifest.Checksum, &manifest.DeviceID, &createdAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("manifest not found")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get manifest: %w", err)
+	}
+
+	if createdAt.Valid {
+		manifest.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
 	}
 
 	if err := json.Unmarshal([]byte(chunksJSON), &manifest.Chunks); err != nil {
@@ -97,13 +107,18 @@ func (m *Manager) ListVersions(ctx context.Context, fileID string) ([]*Manifest,
 	for rows.Next() {
 		manifest := &Manifest{}
 		var chunksJSON string
+		var createdAt sql.NullString
 
 		err := rows.Scan(
 			&manifest.ID, &manifest.FileID, &manifest.Version, &manifest.SizeBytes,
-			&manifest.ChunkCount, &chunksJSON, &manifest.Checksum, &manifest.DeviceID, &manifest.CreatedAt,
+			&manifest.ChunkCount, &chunksJSON, &manifest.Checksum, &manifest.DeviceID, &createdAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan manifest: %w", err)
+		}
+
+		if createdAt.Valid {
+			manifest.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
 		}
 
 		if err := json.Unmarshal([]byte(chunksJSON), &manifest.Chunks); err != nil {

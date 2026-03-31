@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -79,13 +80,20 @@ func (m *Manager) GetAuditEntries(ctx context.Context, userID *string, action, r
 	entries := make([]*AuditEntry, 0)
 	for rows.Next() {
 		entry := &AuditEntry{}
+		var createdAt sql.NullString
+
 		err := rows.Scan(
 			&entry.ID, &entry.UserID, &entry.Action, &entry.ResourceType, &entry.ResourceID,
-			&entry.Details, &entry.IPAddress, &entry.UserAgent, &entry.CreatedAt,
+			&entry.Details, &entry.IPAddress, &entry.UserAgent, &createdAt,
 		)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to scan audit entry: %w", err)
 		}
+
+		if createdAt.Valid {
+			entry.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
+		}
+
 		entries = append(entries, entry)
 	}
 

@@ -46,10 +46,11 @@ func (m *Manager) GetAPITokenByHash(ctx context.Context, tokenHash string) (*API
 	token := &APIToken{}
 	var permsJSON string
 	var lastUsedAt, expiresAt sql.NullString
+	var createdAt sql.NullString
 
 	err := m.db.QueryRowContext(ctx, query, tokenHash).Scan(
 		&token.ID, &token.UserID, &token.Name, &token.TokenHash,
-		&permsJSON, &lastUsedAt, &expiresAt, &token.CreatedAt,
+		&permsJSON, &lastUsedAt, &expiresAt, &createdAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("token not found")
@@ -69,6 +70,9 @@ func (m *Manager) GetAPITokenByHash(ctx context.Context, tokenHash string) (*API
 		t, _ := time.Parse(time.RFC3339, expiresAt.String)
 		token.ExpiresAt = &t
 	}
+	if createdAt.Valid {
+		token.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
+	}
 
 	return token, nil
 }
@@ -81,10 +85,11 @@ func (m *Manager) GetAPITokenByID(ctx context.Context, id string) (*APIToken, er
 	token := &APIToken{}
 	var permsJSON string
 	var lastUsedAt, expiresAt sql.NullString
+	var createdAt sql.NullString
 
 	err := m.db.QueryRowContext(ctx, query, id).Scan(
 		&token.ID, &token.UserID, &token.Name, &token.TokenHash,
-		&permsJSON, &lastUsedAt, &expiresAt, &token.CreatedAt,
+		&permsJSON, &lastUsedAt, &expiresAt, &createdAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("token not found")
@@ -102,6 +107,9 @@ func (m *Manager) GetAPITokenByID(ctx context.Context, id string) (*APIToken, er
 	if expiresAt.Valid {
 		t, _ := time.Parse(time.RFC3339, expiresAt.String)
 		token.ExpiresAt = &t
+	}
+	if createdAt.Valid {
+		token.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
 	}
 
 	return token, nil
@@ -123,10 +131,11 @@ func (m *Manager) ListAPITokensByUser(ctx context.Context, userID string) ([]*AP
 		token := &APIToken{}
 		var permsJSON string
 		var lastUsedAt, expiresAt sql.NullString
+		var createdAt sql.NullString
 
 		err := rows.Scan(
 			&token.ID, &token.UserID, &token.Name, &token.TokenHash,
-			&permsJSON, &lastUsedAt, &expiresAt, &token.CreatedAt,
+			&permsJSON, &lastUsedAt, &expiresAt, &createdAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan API token: %w", err)
@@ -141,6 +150,9 @@ func (m *Manager) ListAPITokensByUser(ctx context.Context, userID string) ([]*AP
 		if expiresAt.Valid {
 			t, _ := time.Parse(time.RFC3339, expiresAt.String)
 			token.ExpiresAt = &t
+		}
+		if createdAt.Valid {
+			token.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
 		}
 
 		tokens = append(tokens, token)

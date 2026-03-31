@@ -2,167 +2,468 @@
 
 > **Your Files. Your Vault. Your Drift.**
 
-[![Go Version](https://img.shields.io/badge/go-1.23+-blue.svg)](https://golang.org)
-[![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
-[![Build Status](https://img.shields.io/badge/build-in%20progress-yellow.svg)]()
+[![Go Version](https://img.shields.io/badge/go-1.26+-blue.svg)](https://golang.org)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
 
-VaultDrift is a **zero-dependency, single-binary** self-hosted file sync and share solution. Built in pure Go with an embedded database, it replaces complex stacks like Nextcloud/ownCloud/Seafile with a single, fast, secure binary.
+VaultDrift is a **secure, distributed file storage system** with end-to-end encryption, content-defined chunking, and real-time synchronization. Built in pure Go with an embedded SQLite database, it provides a complete self-hosted cloud storage solution.
 
 ## Philosophy: #NOFORKANYMORE
 
 - **Zero external dependencies** - Everything from S3 signing to TOTP is built from scratch
 - **Single binary** - One file, complete functionality
 - **Pure Go** - No CGo, cross-compile everywhere
-- **End-to-end encryption** - Zero-knowledge architecture
-- **Delta sync** - Only changed chunks transferred
+- **End-to-end encryption** - Zero-knowledge architecture with AES-256-GCM
+- **Delta sync** - Only changed chunks transferred using Rabin CDC
+- **Real-time collaboration** - WebSocket-based live sync
 
 ## Features
 
-| Feature | Status |
-|---------|--------|
-| Storage Abstraction (Local + S3) | ✅ |
-| Content-Defined Chunking + Deduplication | ✅ |
-| End-to-End Encryption (AES-256-GCM, X25519) | ✅ |
-| Delta Sync Protocol | ✅ |
-| Web UI (Vanilla JS) | ✅ |
-| CLI Client with Sync | ✅ |
-| Desktop Tray App | ✅ |
-| Public Share Links | ✅ |
-| TOTP 2FA | ✅ |
-| RBAC Authorization | ✅ |
-| Real-time Sync (WebSocket/SSE) | ✅ |
-| File Versioning | ✅ |
-| Trash/Recycle Bin | ✅ |
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Storage Abstraction (Local + S3) | ✅ | Pluggable storage backends |
+| Content-Defined Chunking | ✅ | Rabin fingerprinting, 256KB-4MB chunks |
+| Deduplication | ✅ | Global block-level deduplication |
+| End-to-End Encryption | ✅ | AES-256-GCM, X25519 key exchange |
+| Delta Sync Protocol | ✅ | Transfer only changed chunks |
+| Vector Clocks | ✅ | Distributed conflict resolution |
+| Merkle Trees | ✅ | Efficient sync state comparison |
+| Web UI (React 19) | ✅ | Modern SPA with Tailwind CSS |
+| CLI Client | ✅ | Full-featured command-line client |
+| Desktop Tray App | ✅ | System tray with auto-sync |
+| WebDAV Server | ✅ | Class 2 compliant WebDAV |
+| Public Share Links | ✅ | Expiring links with passwords |
+| TOTP 2FA | ✅ | Time-based one-time passwords |
+| RBAC Authorization | ✅ | Role-based access control |
+| Real-time Sync | ✅ | WebSocket event broadcasting |
+| File Versioning | ✅ | Keep multiple versions |
+| Trash/Recycle Bin | ✅ | 30-day retention |
+| Thumbnail Generation | ✅ | Async image thumbnails |
+| Background Workers | ✅ | GC, cleanup, maintenance |
 
 ## Quick Start
+
+### Prerequisites
+
+- Go 1.26+
+- Node.js 20+ and npm (for web UI)
+- Git
 
 ### Installation
 
 ```bash
-# Download binary (coming soon)
-curl -fsSL https://vaultdrift.com/install.sh | sh
+# Clone the repository
+git clone https://github.com/vaultdrift/vaultdrift.git
+cd vaultdrift
 
-# Or build from source
-git clone https://github.com/vaultdrift/vaultdrift
-cd vaultdrift && make build
+# Install dependencies
+go mod download
+cd web && npm install && cd ..
+
+# Build the web UI
+cd web && npm run build && cd ..
+
+# Build all binaries
+go build -o vaultdrift-server ./cmd/server
+go build -o vaultdrift-cli ./cmd/vaultdrift-cli
+go build -o vaultdrift-desktop ./cmd/vaultdrift-desktop
 ```
 
-### First Run
+### Running the Server
 
 ```bash
 # Initialize with admin user
-vaultdrift init --admin-user admin --admin-email admin@example.com
+./vaultdrift-server init --admin-user admin --admin-email admin@example.com
 
 # Start server
-vaultdrift serve
+./vaultdrift-server serve
 
 # Or with custom config
-vaultdrift serve --config /etc/vaultdrift/vaultdrift.yaml
+./vaultdrift-server serve --config /etc/vaultdrift/config.yaml
 ```
 
-### CLI Client
+Default server URL: `https://localhost:8443`
+
+### Using the CLI Client
 
 ```bash
+# Configure server
+./vaultdrift-cli config server https://vault.example.com
+
 # Login
-vaultdrift-cli login https://vault.example.com
+./vaultdrift-cli login
 
-# Sync folder
-vaultdrift-cli init ~/VaultDrift
-vaultdrift-cli daemon start
+# List files
+./vaultdrift-cli ls
 
-# One-time sync
-vaultdrift-cli sync
+# Upload a file
+./vaultdrift-cli upload ./document.pdf
+
+# Download a file
+./vaultdrift-cli download document.pdf
+
+# Create a share link
+./vaultdrift-cli share document.pdf --expires 7
+
+# Sync a folder
+./vaultdrift-cli sync ./my-folder
+
+# Run sync daemon (auto-upload on changes)
+./vaultdrift-cli daemon ./my-folder
+```
+
+### Using the Desktop App
+
+```bash
+# Run the desktop tray application
+./vaultdrift-desktop
+
+# The app will appear in your system tray
+# Click to open the web interface in your browser
+```
+
+### Using WebDAV
+
+Mount VaultDrift as a network drive:
+
+```bash
+# Linux (davfs2)
+mount -t davfs https://vault.example.com/webdav /mnt/vaultdrift
+
+# macOS
+mount_webdav https://vault.example.com/webdav /Volumes/VaultDrift
+
+# Windows
+net use Z: https://vault.example.com/webdav
 ```
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    VaultDrift Binary                     │
-├─────────────────────────────────────────────────────────┤
-│  HTTP/API │  WebDAV  │   Sync   │  Admin  │  Web UI    │
-├─────────────────────────────────────────────────────────┤
-│              Core Engine (VFS + Crypto)                  │
-├─────────────────────────────────────────────────────────┤
-│         Storage Abstraction (Local / S3)                 │
-├─────────────────────────────────────────────────────────┤
-│              CobaltDB (Embedded Database)                │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                          Clients                                 │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐   │
+│  │   Web UI   │ │ CLI Client │ │   Desktop  │ │   WebDAV   │   │
+│  │  (React)   │ │   (Go)     │ │  (Tray)    │ │   Client   │   │
+│  └──────┬─────┘ └──────┬─────┘ └──────┬─────┘ └──────┬─────┘   │
+│         │              │              │              │          │
+│         └──────────────┴──────┬───────┴──────────────┘          │
+│                               │                                  │
+│                    HTTP / WebSocket / WebDAV                     │
+└───────────────────────────────┬──────────────────────────────────┘
+                                │
+┌───────────────────────────────┼──────────────────────────────────┐
+│                           Server                                 │
+│  ┌────────────────────────────┼──────────────────────────────┐  │
+│  │              API Gateway (REST + WebSocket)               │  │
+│  └────────────────────────────┼──────────────────────────────┘  │
+│                               │                                  │
+│  ┌──────────┐ ┌──────────┐  ┌┴─────────┐ ┌──────────┐ ┌──────┐ │
+│  │   Auth   │ │   File   │  │  Chunk   │ │   Sync   │ │ Web- │ │
+│  │ Service  │ │ Service  │  │ Service  │ │ Service  │ │ DAV  │ │
+│  └────┬─────┘ └────┬─────┘  └────┬─────┘ └────┬─────┘ └──┬───┘ │
+│       │            │             │            │            │     │
+│  ┌────┴────┐ ┌────┴────┐ ┌──────┴────┐ ┌────┴────┐ ┌────┴───┐│
+│  │  JWT    │ │   VFS   │ │    CDC    │ │  Vector │ │  Lock  ││
+│  │  TOTP   │ │  Layer  │ │   Engine  │ │  Clocks │ │ Store  ││
+│  └─────────┘ └─────────┘ └───────────┘ └─────────┘ └────────┘│
+│                               │                                  │
+│                    ┌──────────┴──────────┐                      │
+│                    │   Storage Backend    │                      │
+│                    │   (Local / S3)       │                      │
+│                    └─────────────────────┘                      │
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │              SQLite (Embedded Database)                   │   │
+│  │  Users │ Files │ Chunks │ Shares │ Versions │ Sync State │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Configuration
+
+Create a `config.yaml` file:
+
+```yaml
+server:
+  host: 0.0.0.0
+  port: 8443
+  base_url: https://vault.example.com
+  tls:
+    enabled: true
+    cert_file: /etc/vaultdrift/cert.pem
+    key_file: /etc/vaultdrift/key.pem
+
+storage:
+  backend: local  # or s3
+  local:
+    data_dir: /var/lib/vaultdrift/data
+  # s3:
+  #   endpoint: s3.amazonaws.com
+  #   bucket: my-bucket
+  #   region: us-east-1
+  #   access_key: ACCESS_KEY
+  #   secret_key: SECRET_KEY
+
+database:
+  path: /var/lib/vaultdrift/vaultdrift.db
+
+auth:
+  jwt_secret: change-this-to-a-secure-random-string
+  access_token_ttl: 15m
+  refresh_token_ttl: 7d
+  totp_enabled: true
+
+sync:
+  chunk_size_min: 262144      # 256KB
+  chunk_size_avg: 1048576     # 1MB
+  chunk_size_max: 4194304     # 4MB
+  max_concurrent_transfers: 4
+
+encryption:
+  enabled: true
+  zero_knowledge: true
+  argon2_time: 3
+  argon2_memory: 65536        # 64MB
+  argon2_threads: 4
+
+sharing:
+  public_links_enabled: true
+  max_expiry_days: 90
+  default_expiry_days: 7
+
+logging:
+  level: info
+  format: json
+  audit: true
+```
+
+Environment variables override config values:
+```bash
+VAULTDRIFT_SERVER_PORT=8443
+VAULTDRIFT_STORAGE_BACKEND=s3
+VAULTDRIFT_STORAGE_S3_BUCKET=mybucket
+VAULTDRIFT_AUTH_JWT_SECRET=secret
 ```
 
 ## Development
-
-### Prerequisites
-
-- Go 1.23+
-- Node.js 20+ (for Web UI)
-- Make
-
-### Building
-
-```bash
-# Build all binaries
-make build-all
-
-# Build with web UI
-make build-web && make build
-
-# Run tests
-make test
-
-# Run with hot reload
-make dev
-```
 
 ### Project Structure
 
 ```
 vaultdrift/
 ├── cmd/
-│   ├── vaultdrift/          # Server binary
+│   ├── server/              # Main server executable
 │   ├── vaultdrift-cli/      # CLI client
 │   └── vaultdrift-desktop/  # Desktop tray app
 ├── internal/
-│   ├── server/              # HTTP server, middleware
-│   ├── api/                 # REST API handlers
-│   ├── webdav/              # WebDAV server
-│   ├── vfs/                 # Virtual filesystem
-│   ├── storage/             # Storage backends
-│   ├── chunk/               # Content-defined chunking
-│   ├── crypto/              # Encryption engine
-│   ├── sync/                # Sync protocol
+│   ├── api/                 # API types
 │   ├── auth/                # Authentication & RBAC
-│   ├── share/               # Sharing engine
-│   └── db/                  # CobaltDB integration
-├── client/                  # Shared client library
-├── desktop/                 # Desktop tray app
-├── web/                     # React Web UI
-└── cobaltdb/                # Embedded database
+│   ├── chunk/               # Content-defined chunking (CDC)
+│   ├── cli/                 # CLI implementation
+│   ├── config/              # Configuration
+│   ├── crypto/              # Encryption/decryption
+│   ├── db/                  # Database layer (SQLite)
+│   ├── desktop/             # Desktop app
+│   ├── server/              # HTTP server & middleware
+│   ├── share/               # Sharing logic
+│   ├── storage/             # Storage backends
+│   ├── sync/                # Sync engine
+│   ├── thumbnail/           # Thumbnail generation
+│   ├── vfs/                 # Virtual file system
+│   ├── webdav/              # WebDAV implementation
+│   └── worker/              # Background workers
+├── web/                     # React 19 + Tailwind CSS
+│   ├── src/
+│   │   ├── components/      # UI components
+│   │   ├── lib/             # API client
+│   │   ├── pages/           # Page components
+│   │   └── stores/          # Zustand state
+│   └── dist/                # Built assets (embedded)
+├── docs/                    # Documentation
+└── scripts/                 # Build & deploy scripts
 ```
 
-## Configuration
+### Running Tests
 
-See `vaultdrift.yaml.example` for a complete configuration reference.
-
-Environment variables override config file values:
 ```bash
-VAULTDRIFT_SERVER_PORT=8443
-VAULTDRIFT_STORAGE_BACKEND=s3
-VAULTDRIFT_STORAGE_S3_BUCKET=mybucket
+# Run all tests
+go test ./...
+
+# Run tests with coverage
+go test -cover ./...
+
+# Run specific package tests
+go test ./internal/chunk/... -v
+go test ./internal/sync/... -v
+```
+
+### Building for Production
+
+```bash
+# Build all binaries for current platform
+make build-all
+
+# Cross-compile for multiple platforms
+make build-cross
+
+# Build Docker image
+make docker-build
+
+# Run with Docker Compose
+make docker-up
+```
+
+## API Documentation
+
+### Authentication
+
+```http
+POST /api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "user",
+  "password": "pass",
+  "totp_code": "123456"  # if 2FA enabled
+}
+
+Response:
+{
+  "token": "eyJhbGc...",
+  "refresh_token": "eyJhbGc...",
+  "expires_at": 1234567890
+}
+```
+
+### Files
+
+```http
+# List files
+GET /api/v1/files?parent_id={folder_id}
+Authorization: Bearer {token}
+
+# Create folder
+POST /api/v1/folders
+{
+  "name": "My Folder",
+  "parent_id": "uuid-or-null"
+}
+
+# Upload (chunked)
+POST /api/v1/uploads
+{
+  "name": "file.pdf",
+  "size_bytes": 10485760,
+  "mime_type": "application/pdf",
+  "parent_id": "folder-uuid"
+}
+
+# Download
+GET /api/v1/downloads/{file_id}
+```
+
+### WebSocket (Real-time)
+
+```javascript
+const ws = new WebSocket('wss://vault.example.com/ws?token=JWT');
+
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+  // Handle: file_created, file_updated, file_deleted, sync_required
+};
+
+// Subscribe to folder
+ws.send(JSON.stringify({
+  type: 'subscribe',
+  payload: { folder_id: 'folder-uuid' }
+}));
 ```
 
 ## Security
 
-- **TLS 1.3** with automatic Let's Encrypt certificates
-- **Argon2id** password hashing
-- **AES-256-GCM** file encryption
-- **X25519** key exchange for sharing
-- **Vector clocks** for conflict detection
-- Rate limiting, CSRF protection, audit logging
+| Layer | Technology |
+|-------|------------|
+| Transport | TLS 1.3 with automatic Let's Encrypt |
+| Passwords | Argon2id (OWASP recommended) |
+| File Encryption | AES-256-GCM with unique keys per file |
+| Key Exchange | X25519 ECDH for sharing |
+| Tokens | JWT with Ed25519 signatures |
+| 2FA | TOTP (RFC 6238) |
+| Conflict Resolution | Vector clocks (Lamport timestamps) |
+
+### Threat Model
+
+- **Server compromise**: Files remain encrypted, only metadata exposed
+- **Man-in-the-middle**: TLS 1.3 prevents interception
+- **Password breach**: Argon2id makes offline cracking expensive
+- **Replay attacks**: Short-lived JWT tokens with rotation
+- **CSRF**: SameSite cookies and origin validation
+
+## Deployment
+
+### Docker
+
+```bash
+docker run -d \
+  --name vaultdrift \
+  -p 8443:8443 \
+  -v /var/lib/vaultdrift:/data \
+  -e VAULTDRIFT_AUTH_JWT_SECRET=secret \
+  vaultdrift/vaultdrift:latest
+```
+
+### Docker Compose
+
+```yaml
+version: '3.8'
+services:
+  vaultdrift:
+    image: vaultdrift/vaultdrift:latest
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./data:/data
+    environment:
+      - VAULTDRIFT_STORAGE_BACKEND=s3
+      - VAULTDRIFT_STORAGE_S3_BUCKET=mybucket
+      - VAULTDRIFT_STORAGE_S3_ACCESS_KEY=${S3_KEY}
+      - VAULTDRIFT_STORAGE_S3_SECRET_KEY=${S3_SECRET}
+```
+
+### Kubernetes
+
+See `deploy/kubernetes/` for Helm charts and manifests.
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+
+## Roadmap
+
+- [ ] Mobile apps (iOS/Android)
+- [ ] FUSE filesystem mount
+- [ ] Office document collaboration
+- [ ] Video streaming/transcoding
+- [ ] Federation between servers
+- [ ] IPFS backend support
 
 ## License
 
-Apache 2.0 - See [LICENSE](LICENSE) for details.
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- Rabin fingerprinting for content-defined chunking
+- Vector clocks for distributed conflict resolution
+- Merkle trees for efficient sync state comparison
+- Argon2 password hashing competition
 
 ---
 

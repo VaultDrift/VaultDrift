@@ -20,10 +20,10 @@ func NewVersionHandler(vfsService *vfs.VFS) *VersionHandler {
 // RegisterRoutes registers the version routes.
 func (h *VersionHandler) RegisterRoutes(mux *http.ServeMux, auth *AuthMiddleware) {
 	// Get current version
-	mux.Handle("GET /api/v1/files/{id}/version", auth.RequireAuth(http.HandlerFunc(h.getVersion)))
+	mux.Handle("GET /api/v1/files/{id}/version", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.getVersion))))
 
 	// Increment version (manual version bump)
-	mux.Handle("POST /api/v1/files/{id}/version", auth.RequireAuth(http.HandlerFunc(h.incrementVersion)))
+	mux.Handle("POST /api/v1/files/{id}/version", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.incrementVersion))))
 }
 
 // getVersion returns the current version of a file.

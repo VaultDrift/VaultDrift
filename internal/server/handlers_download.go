@@ -41,16 +41,16 @@ func (h *DownloadHandler) SetMasterKey(key []byte) {
 // RegisterRoutes registers the download routes.
 func (h *DownloadHandler) RegisterRoutes(mux *http.ServeMux, auth *AuthMiddleware) {
 	// Download file (full or with Range header)
-	mux.Handle("GET /api/v1/files/{id}/download", auth.RequireAuth(http.HandlerFunc(h.downloadFile)))
+	mux.Handle("GET /api/v1/files/{id}/download", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.downloadFile))))
 
 	// Stream file (alias for download, for media streaming)
-	mux.Handle("GET /api/v1/files/{id}/stream", auth.RequireAuth(http.HandlerFunc(h.streamFile)))
+	mux.Handle("GET /api/v1/files/{id}/stream", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.streamFile))))
 
 	// Get encrypted chunks info for client-side decryption
-	mux.Handle("GET /api/v1/files/{id}/chunks", auth.RequireAuth(http.HandlerFunc(h.getChunksInfo)))
+	mux.Handle("GET /api/v1/files/{id}/chunks", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.getChunksInfo))))
 
 	// Download specific chunk (for client-side reassembly)
-	mux.Handle("GET /api/v1/files/{id}/chunks/{hash}", auth.RequireAuth(http.HandlerFunc(h.downloadChunk)))
+	mux.Handle("GET /api/v1/files/{id}/chunks/{hash}", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.downloadChunk))))
 }
 
 // downloadFile handles file download with support for HTTP Range requests.

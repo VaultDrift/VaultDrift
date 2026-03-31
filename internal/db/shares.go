@@ -39,13 +39,14 @@ func (m *Manager) GetShareByID(ctx context.Context, id string) (*Share, error) {
 
 	share := &Share{}
 	var token, passwordHash, expiresAt, maxDownloads, sharedWith sql.NullString
+	var createdAt, updatedAt sql.NullString
 
 	err := m.db.QueryRowContext(ctx, query, id).Scan(
 		&share.ID, &share.FileID, &share.CreatedBy, &share.ShareType, &token,
 		&passwordHash, &expiresAt, &maxDownloads, &share.DownloadCount,
 		&share.AllowUpload, &share.PreviewOnly, &sharedWith, &share.Permission,
 		&share.EncryptedKey, &share.IsActive, &share.ViewCount,
-		&share.CreatedAt, &share.UpdatedAt,
+		&createdAt, &updatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("share not found")
@@ -71,6 +72,12 @@ func (m *Manager) GetShareByID(ctx context.Context, id string) (*Share, error) {
 	if sharedWith.Valid {
 		share.SharedWith = &sharedWith.String
 	}
+	if createdAt.Valid {
+		share.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
+	}
+	if updatedAt.Valid {
+		share.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt.String)
+	}
 
 	return share, nil
 }
@@ -84,13 +91,14 @@ func (m *Manager) GetShareByToken(ctx context.Context, token string) (*Share, er
 
 	share := &Share{}
 	var passwordHash, expiresAt, maxDownloads, sharedWith sql.NullString
+	var createdAt, updatedAt sql.NullString
 
 	err := m.db.QueryRowContext(ctx, query, token).Scan(
 		&share.ID, &share.FileID, &share.CreatedBy, &share.ShareType, &share.Token,
 		&passwordHash, &expiresAt, &maxDownloads, &share.DownloadCount,
 		&share.AllowUpload, &share.PreviewOnly, &sharedWith, &share.Permission,
 		&share.EncryptedKey, &share.IsActive, &share.ViewCount,
-		&share.CreatedAt, &share.UpdatedAt,
+		&createdAt, &updatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("share not found")
@@ -113,6 +121,12 @@ func (m *Manager) GetShareByToken(ctx context.Context, token string) (*Share, er
 	if sharedWith.Valid {
 		share.SharedWith = &sharedWith.String
 	}
+	if createdAt.Valid {
+		share.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
+	}
+	if updatedAt.Valid {
+		share.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt.String)
+	}
 
 	return share, nil
 }
@@ -134,13 +148,14 @@ func (m *Manager) GetSharesByFile(ctx context.Context, fileID string) ([]*Share,
 	for rows.Next() {
 		share := &Share{}
 		var token, passwordHash, expiresAt, maxDownloads, sharedWith sql.NullString
+		var createdAt, updatedAt sql.NullString
 
 		err := rows.Scan(
 			&share.ID, &share.FileID, &share.CreatedBy, &share.ShareType, &token,
 			&passwordHash, &expiresAt, &maxDownloads, &share.DownloadCount,
 			&share.AllowUpload, &share.PreviewOnly, &sharedWith, &share.Permission,
 			&share.EncryptedKey, &share.IsActive, &share.ViewCount,
-			&share.CreatedAt, &share.UpdatedAt,
+			&createdAt, &updatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan share: %w", err)
@@ -162,6 +177,12 @@ func (m *Manager) GetSharesByFile(ctx context.Context, fileID string) ([]*Share,
 		}
 		if sharedWith.Valid {
 			share.SharedWith = &sharedWith.String
+		}
+		if createdAt.Valid {
+			share.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
+		}
+		if updatedAt.Valid {
+			share.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt.String)
 		}
 
 		shares = append(shares, share)
@@ -187,13 +208,14 @@ func (m *Manager) GetSharesByUser(ctx context.Context, userID string) ([]*Share,
 	for rows.Next() {
 		share := &Share{}
 		var token, passwordHash, expiresAt, maxDownloads, sharedWith sql.NullString
+		var createdAt, updatedAt sql.NullString
 
 		err := rows.Scan(
 			&share.ID, &share.FileID, &share.CreatedBy, &share.ShareType, &token,
 			&passwordHash, &expiresAt, &maxDownloads, &share.DownloadCount,
 			&share.AllowUpload, &share.PreviewOnly, &sharedWith, &share.Permission,
 			&share.EncryptedKey, &share.IsActive, &share.ViewCount,
-			&share.CreatedAt, &share.UpdatedAt,
+			&createdAt, &updatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan share: %w", err)
@@ -215,6 +237,12 @@ func (m *Manager) GetSharesByUser(ctx context.Context, userID string) ([]*Share,
 		}
 		if sharedWith.Valid {
 			share.SharedWith = &sharedWith.String
+		}
+		if createdAt.Valid {
+			share.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
+		}
+		if updatedAt.Valid {
+			share.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt.String)
 		}
 
 		shares = append(shares, share)
@@ -240,13 +268,14 @@ func (m *Manager) GetReceivedShares(ctx context.Context, userID string) ([]*Shar
 	for rows.Next() {
 		share := &Share{}
 		var token, passwordHash, expiresAt, maxDownloads, sharedWith sql.NullString
+		var createdAt, updatedAt sql.NullString
 
 		err := rows.Scan(
 			&share.ID, &share.FileID, &share.CreatedBy, &share.ShareType, &token,
 			&passwordHash, &expiresAt, &maxDownloads, &share.DownloadCount,
 			&share.AllowUpload, &share.PreviewOnly, &sharedWith, &share.Permission,
 			&share.EncryptedKey, &share.IsActive, &share.ViewCount,
-			&share.CreatedAt, &share.UpdatedAt,
+			&createdAt, &updatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan share: %w", err)
@@ -268,6 +297,12 @@ func (m *Manager) GetReceivedShares(ctx context.Context, userID string) ([]*Shar
 		}
 		if sharedWith.Valid {
 			share.SharedWith = &sharedWith.String
+		}
+		if createdAt.Valid {
+			share.CreatedAt, _ = time.Parse(time.RFC3339, createdAt.String)
+		}
+		if updatedAt.Valid {
+			share.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt.String)
 		}
 
 		shares = append(shares, share)

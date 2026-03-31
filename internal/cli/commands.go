@@ -81,6 +81,8 @@ func (cli *CLI) Run(args []string) error {
 		return cli.handleUnshare(args[1:])
 	case "sync":
 		return cli.handleSync(args[1:])
+	case "daemon":
+		return cli.handleDaemon(args[1:])
 	case "status":
 		return cli.handleStatus()
 	default:
@@ -117,6 +119,7 @@ COMMANDS:
   shares <file>          List shares for a file
   unshare <share-id>     Revoke a share
   sync [folder]          Sync local folder with server
+  daemon [folder]        Run sync daemon (watch for changes)
   status                 Show connection and auth status
 
 EXAMPLES:

@@ -319,3 +319,32 @@ func detectMimeType(filename string) string {
 		return "application/octet-stream"
 	}
 }
+
+// handleDaemon handles the daemon command
+func (cli *CLI) handleDaemon(args []string) error {
+	if err := cli.ensureLoggedIn(); err != nil {
+		return err
+	}
+
+	watchDir := cli.config.DefaultDir
+	if len(args) > 0 {
+		watchDir = args[0]
+	}
+
+	if watchDir == "" {
+		return fmt.Errorf("no watch directory specified. Use 'config dir <path>' or provide path as argument")
+	}
+
+	// Ensure directory exists
+	if _, err := os.Stat(watchDir); os.IsNotExist(err) {
+		return fmt.Errorf("directory does not exist: %s", watchDir)
+	}
+
+	// Create and start daemon
+	daemon, err := NewSyncDaemon(cli, watchDir)
+	if err != nil {
+		return fmt.Errorf("failed to create daemon: %w", err)
+	}
+
+	return daemon.Start()
+}

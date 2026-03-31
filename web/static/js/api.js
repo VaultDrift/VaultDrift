@@ -147,34 +147,47 @@ class VaultDriftAPI {
     }
 
     async uploadFile(file, parentId = '', onProgress = null) {
-        // Get upload URL
+        // Step 1: Create upload session
         const uploadInfo = await this.getUploadUrl(parentId, file.name, file.type, file.size);
+        const sessionId = uploadInfo.session_id;
+        const chunkSize = uploadInfo.chunk_size;
+        const totalChunks = uploadInfo.total_chunks;
 
-        // Upload to presigned URL
-        const uploadResponse = await fetch(uploadInfo.upload_url, {
-            method: 'PUT',
-            body: file,
-            headers: {
-                'Content-Type': file.type
+        // Step 2: Upload chunks
+        for (let i = 0; i < totalChunks; i++) {
+            const start = i * chunkSize;
+            const end = Math.min(start + chunkSize, file.size);
+            const chunk = file.slice(start, end);
+
+            const response = await fetch(`${API_BASE}/api/v1/uploads/${sessionId}/chunks/${i}`, {
+                method: 'PUT',
+                body: chunk,
+                headers: {
+                    'Authorization': `Bearer ${this.token}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to upload chunk ${i}`);
             }
-        });
 
-        if (!uploadResponse.ok) {
-            throw new Error('Upload failed');
+            if (onProgress) {
+                onProgress(Math.round(((i + 1) / totalChunks) * 100));
+            }
         }
 
-        return uploadInfo.file_id;
-    }
-
-    async getDownloadUrl(fileId) {
-        const response = await this.request('GET', `/api/v1/downloads/${fileId}`);
-        return response?.data;
+        // Step 3: Complete upload
+        const completeResponse = await this.request('POST', `/api/v1/uploads/${sessionId}/complete`);
+        return completeResponse?.data?.file?.id;
     }
 
     async downloadFile(fileId, fileName) {
-        const downloadInfo = await this.getDownloadUrl(fileId);
+        const response = await fetch(`${API_BASE}/api/v1/files/${fileId}/download`, {
+            headers: {
+                'Authorization': `Bearer ${this.token}`
+            }
+        });
 
-        const response = await fetch(downloadInfo.download_url);
         if (!response.ok) {
             throw new Error('Download failed');
         }
@@ -184,7 +197,7 @@ class VaultDriftAPI {
 
         const a = document.createElement('a');
         a.href = url;
-        a.download = fileName || downloadInfo.filename;
+        a.download = fileName || 'download';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);

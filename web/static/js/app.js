@@ -211,8 +211,8 @@ document.addEventListener('DOMContentLoaded', () => {
         updateBreadcrumbs([{ name: 'Trash' }]);
     }
 
-    function renderFiles(fileList) {
-        if (!fileList || fileList.length === 0) {
+    function renderFiles(files) {
+        if (!files || files.length === 0) {
             fileList.classList.add('hidden');
             emptyState.classList.remove('hidden');
             return;
@@ -221,7 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
         fileList.classList.remove('hidden');
         emptyState.classList.add('hidden');
 
-        fileListBody.innerHTML = fileList.map(file => `
+        fileListBody.innerHTML = files.map(file => `
             <tr data-file-id="${file.id}" data-file-type="${file.type}">
                 <td>
                     <div class="file-name" onclick="navigateTo('${file.id}', '${file.type}')">
@@ -231,10 +231,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         ${escapeHtml(file.name)}
                     </div>
                 </td>
-                <td>${file.type === 'folder' ? '--' : formatBytes(file.size)}</td>
+                <td>${file.type === 'folder' ? '--' : formatBytes(file.size_bytes || 0)}</td>
                 <td>${formatDate(file.updated_at)}</td>
                 <td class="col-actions">
-                    <button class="btn btn-sm btn-secondary" onclick="showFileActions('${file.id}')">
+                    <button class="btn btn-sm btn-secondary" onclick="showFileActions('${file.id}', event)">
                         ⋮
                     </button>
                 </td>
@@ -302,7 +302,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function formatDate(timestamp) {
         if (!timestamp) return '--';
-        const date = new Date(timestamp * 1000);
+        // API returns ISO string format, not unix timestamp
+        const date = new Date(timestamp);
+        if (isNaN(date.getTime())) return '--';
         return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
@@ -355,13 +357,18 @@ document.addEventListener('DOMContentLoaded', () => {
         loadFiles();
     };
 
-    window.showFileActions = (fileId) => {
+    window.showFileActions = (fileId, event) => {
         const file = files.find(f => f.id === fileId);
         if (!file) return;
+
+        // Remove any existing menus
+        document.querySelectorAll('.context-menu').forEach(m => m.remove());
 
         // Create context menu
         const menu = document.createElement('div');
         menu.className = 'context-menu';
+        menu.style.position = 'absolute';
+        menu.style.zIndex = '1000';
         menu.innerHTML = `
             <div class="context-menu-item" onclick="renameFile('${fileId}')">Rename</div>
             <div class="context-menu-item" onclick="moveFile('${fileId}')">Move</div>
@@ -370,12 +377,21 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="context-menu-item danger" onclick="deleteFile('${fileId}')">Delete</div>
         `;
 
-        // Position menu near click
+        // Position menu near the clicked button
+        const btn = event?.target || event?.currentTarget;
+        if (btn) {
+            const rect = btn.getBoundingClientRect();
+            menu.style.top = (rect.bottom + window.scrollY) + 'px';
+            menu.style.left = (rect.left + window.scrollX - 120) + 'px';
+        }
+
         document.body.appendChild(menu);
 
-        const closeMenu = () => {
-            menu.remove();
-            document.removeEventListener('click', closeMenu);
+        const closeMenu = (e) => {
+            if (!menu.contains(e.target)) {
+                menu.remove();
+                document.removeEventListener('click', closeMenu);
+            }
         };
 
         setTimeout(() => {

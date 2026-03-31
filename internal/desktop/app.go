@@ -25,6 +25,7 @@ type App struct {
 	storage storage.Backend
 	ctx     context.Context
 	cancel  context.CancelFunc
+	tray    *TrayMenu
 }
 
 // NewApp creates a new desktop application
@@ -55,7 +56,8 @@ func NewApp(cfg *config.Config) (*App, error) {
 	// Create HTTP server
 	httpServer := server.NewServer(cfg.Server, database, authSvc, vfsService, store, []byte(cfg.Auth.JWTSecret))
 
-	return &App{
+	// Create app
+	app := &App{
 		config:  cfg,
 		server:  httpServer,
 		vfs:     vfsService,
@@ -63,7 +65,12 @@ func NewApp(cfg *config.Config) (*App, error) {
 		storage: store,
 		ctx:     ctx,
 		cancel:  cancel,
-	}, nil
+	}
+
+	// Create tray menu
+	app.tray = NewTrayMenu(app)
+
+	return app, nil
 }
 
 // Run starts the desktop application
@@ -115,18 +122,11 @@ func (a *App) Run() error {
 
 // runUI runs the desktop UI
 func (a *App) runUI() error {
-	// For now, just log that UI would run here
-	// In a real implementation, this would:
-	// 1. Create a system tray icon
-	// 2. Open a webview window pointing to the local server
-	// 3. Handle UI events
+	log.Printf("VaultDrift desktop app running at http://localhost:%d", a.config.Server.Port)
+	log.Println("Use the system tray icon to access the application")
 
-	log.Printf("Desktop UI would start at http://localhost:%d", a.config.Server.Port)
-	log.Println("WebView integration requires a GUI library (fyne/wails/webview)")
-
-	// Block until context is cancelled
-	<-a.ctx.Done()
-	return nil
+	// Run the system tray menu
+	return a.tray.Run()
 }
 
 // cleanup releases resources

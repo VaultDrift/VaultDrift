@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/vaultdrift/vaultdrift/internal/db"
 	"github.com/vaultdrift/vaultdrift/internal/vfs"
 )
@@ -25,6 +26,20 @@ const (
 	WSMsgTypeSyncRequest  = "sync_request"
 	WSMsgTypeSyncResponse = "sync_response"
 	WSMsgTypeError        = "error"
+)
+
+// Event types for WebSocket events
+const (
+	EventFileCreated   = "file.created"
+	EventFileUpdated   = "file.updated"
+	EventFileDeleted   = "file.deleted"
+	EventFileMoved     = "file.moved"
+	EventFolderCreated = "folder.created"
+	EventFolderDeleted = "folder.deleted"
+	EventSyncComplete  = "sync.complete"
+	EventConflict      = "conflict.detected"
+	EventShareReceived = "share.received"
+	EventShareRevoked  = "share.revoked"
 )
 
 // WebSocketMessage represents a message in the WebSocket protocol
@@ -50,51 +65,30 @@ type WebSocketEvent struct {
 type WebSocketClient struct {
 	ID                string
 	UserID            string
-	Conn              WebSocketConn
+	DeviceID          string
+	Conn              *websocket.Conn
 	Server            *WebSocketServer
 	Send              chan *WebSocketMessage
 	SubscribedFolders map[string]bool
 	mu                sync.RWMutex
 }
 
-// WebSocketConn interface for WebSocket connections (allows testing)
-type WebSocketConn interface {
-	ReadMessage() (messageType int, p []byte, err error)
-	WriteMessage(messageType int, data []byte) error
-	WriteControl(messageType int, data []byte, deadline time.Time) error
-	Close() error
-	SetReadDeadline(t time.Time) error
-	SetWriteDeadline(t time.Time) error
-	SetPongHandler(h func(appData string) error)
-	SetPingHandler(h func(appData string) error)
-}
-
 // WebSocketServer manages WebSocket connections and event broadcasting
 type WebSocketServer struct {
-	vfs        *vfs.VFS
-	db         *db.Manager
-	jwtSecret  []byte
+	vfs       *vfs.VFS
+	db        *db.Manager
+	jwtSecret []byte
 
 	clients    map[string]*WebSocketClient
 	clientsMu  sync.RWMutex
+	userIndex  map[string][]string // userID -> clientIDs
+	userMu     sync.RWMutex
 
 	register   chan *WebSocketClient
 	unregister chan *WebSocketClient
 	broadcast  chan *WebSocketEvent
 
-	upgrader   WebSocketUpgrader
-}
-
-// WebSocketUpgrader interface for upgrading HTTP to WebSocket
-type WebSocketUpgrader interface {
-	Upgrade(w http.ResponseWriter, r *http.Request, responseHeader http.Header) (WebSocketConn, error)
-}
-
-// defaultUpgrader wraps the actual WebSocket upgrade logic
-type defaultUpgrader struct{}
-
-func (u *defaultUpgrader) Upgrade(w http.ResponseWriter, r *http.Request, responseHeader http.Header) (WebSocketConn, error) {
-	return nil, fmt.Errorf("WebSocket support requires gorilla/websocket library")
+	upgrader websocket.Upgrader
 }
 
 // NewWebSocketServer creates a new WebSocket server
@@ -104,10 +98,19 @@ func NewWebSocketServer(vfsService *vfs.VFS, database *db.Manager, jwtSecret []b
 		db:         database,
 		jwtSecret:  jwtSecret,
 		clients:    make(map[string]*WebSocketClient),
+		userIndex:  make(map[string][]string),
 		register:   make(chan *WebSocketClient),
 		unregister: make(chan *WebSocketClient),
 		broadcast:  make(chan *WebSocketEvent, 256),
-		upgrader:   &defaultUpgrader{},
+		upgrader: websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+			CheckOrigin: func(r *http.Request) bool {
+				// Allow connections from any origin in development
+				// In production, this should be configured properly
+				return true
+			},
+		},
 	}
 
 	go s.run()
@@ -115,22 +118,34 @@ func NewWebSocketServer(vfsService *vfs.VFS, database *db.Manager, jwtSecret []b
 	return s
 }
 
-// SetUpgrader sets a custom WebSocket upgrader (for testing or different impl)
-func (s *WebSocketServer) SetUpgrader(upgrader WebSocketUpgrader) {
-	s.upgrader = upgrader
-}
-
 // RegisterRoutes registers WebSocket routes
-func (s *WebSocketServer) RegisterRoutes(mux *http.ServeMux, auth *AuthMiddleware) {
-	// WebSocket endpoint
-	mux.Handle("GET /ws", auth.RequireAuth(http.HandlerFunc(s.handleWebSocket)))
+func (s *WebSocketServer) RegisterRoutes(mux *http.ServeMux, auth *AuthHandler) {
+	// WebSocket endpoint with token-based auth via query parameter
+	mux.HandleFunc("GET /ws", func(w http.ResponseWriter, r *http.Request) {
+		s.handleWebSocket(w, r, auth)
+	})
 }
 
 // handleWebSocket handles WebSocket upgrade requests
-func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	userID := GetUserIDFromRequest(r)
-	if userID == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request, auth *AuthHandler) {
+	// Get token from query parameter or header
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		token = r.Header.Get("Authorization")
+		if len(token) > 7 && token[:7] == "Bearer " {
+			token = token[7:]
+		}
+	}
+
+	if token == "" {
+		http.Error(w, "Unauthorized: token required", http.StatusUnauthorized)
+		return
+	}
+
+	// Validate token
+	claims, err := auth.authSvc.ValidateAccessToken(token)
+	if err != nil {
+		http.Error(w, "Unauthorized: invalid token", http.StatusUnauthorized)
 		return
 	}
 
@@ -141,10 +156,17 @@ func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Get device ID
+	deviceID := r.URL.Query().Get("device_id")
+	if deviceID == "" {
+		deviceID = generateRandomString(16)
+	}
+
 	// Create client
 	client := &WebSocketClient{
 		ID:                generateClientID(),
-		UserID:            userID,
+		UserID:            claims.UserID,
+		DeviceID:          deviceID,
 		Conn:              conn,
 		Server:            s,
 		Send:              make(chan *WebSocketMessage, 256),
@@ -153,6 +175,13 @@ func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 
 	// Register client
 	s.register <- client
+
+	// Send initial auth success message
+	client.Send <- &WebSocketMessage{
+		Type:      WSMsgTypeAuthSuccess,
+		Payload:   mustJSON(map[string]string{"device_id": deviceID}),
+		Timestamp: time.Now().Unix(),
+	}
 
 	// Start goroutines for reading and writing
 	go client.writePump()
@@ -168,6 +197,11 @@ func (s *WebSocketServer) run() {
 			s.clients[client.ID] = client
 			s.clientsMu.Unlock()
 
+			// Add to user index
+			s.userMu.Lock()
+			s.userIndex[client.UserID] = append(s.userIndex[client.UserID], client.ID)
+			s.userMu.Unlock()
+
 		case client := <-s.unregister:
 			s.clientsMu.Lock()
 			if _, ok := s.clients[client.ID]; ok {
@@ -175,6 +209,18 @@ func (s *WebSocketServer) run() {
 				close(client.Send)
 			}
 			s.clientsMu.Unlock()
+
+			// Remove from user index
+			s.userMu.Lock()
+			if clients, ok := s.userIndex[client.UserID]; ok {
+				for i, id := range clients {
+					if id == client.ID {
+						s.userIndex[client.UserID] = append(clients[:i], clients[i+1:]...)
+						break
+					}
+				}
+			}
+			s.userMu.Unlock()
 
 		case event := <-s.broadcast:
 			s.broadcastEvent(event)
@@ -184,35 +230,50 @@ func (s *WebSocketServer) run() {
 
 // broadcastEvent sends an event to all subscribed clients
 func (s *WebSocketServer) broadcastEvent(event *WebSocketEvent) {
-	s.clientsMu.RLock()
-	defer s.clientsMu.RUnlock()
-
+	// Build message once
 	message := &WebSocketMessage{
 		Type:      WSMsgTypeEvent,
 		Payload:   mustJSON(event),
 		Timestamp: time.Now().Unix(),
 	}
 
-	for _, client := range s.clients {
-		// Skip if event is for specific user and doesn't match
-		if event.UserID != "" && client.UserID != event.UserID {
+	data, err := json.Marshal(message)
+	if err != nil {
+		return
+	}
+
+	// Get clients for this user
+	s.userMu.RLock()
+	clientIDs := s.userIndex[event.UserID]
+	s.userMu.RUnlock()
+
+	if len(clientIDs) == 0 {
+		return
+	}
+
+	s.clientsMu.RLock()
+	defer s.clientsMu.RUnlock()
+
+	for _, clientID := range clientIDs {
+		client, ok := s.clients[clientID]
+		if !ok {
 			continue
 		}
 
-		// Skip if client hasn't subscribed to this folder
+		// Skip if client hasn't subscribed to this folder (if specified)
 		if event.FolderID != "" {
 			client.mu.RLock()
-			subscribed := client.SubscribedFolders[event.FolderID]
+			subscribed := client.SubscribedFolders[event.FolderID] || client.SubscribedFolders[""]
 			client.mu.RUnlock()
 			if !subscribed {
 				continue
 			}
 		}
 
-		select {
-		case client.Send <- message:
-		default:
-			// Client buffer full, drop message
+		// Send directly to avoid channel bottleneck for broadcast
+		client.Conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		if err := client.Conn.WriteMessage(websocket.TextMessage, data); err != nil {
+			// Write failed, client will be cleaned up on next read
 		}
 	}
 }
@@ -264,6 +325,9 @@ func (c *WebSocketClient) readPump() {
 	for {
 		_, message, err := c.Conn.ReadMessage()
 		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				// Log unexpected close
+			}
 			return
 		}
 
@@ -284,7 +348,7 @@ func (c *WebSocketClient) writePump() {
 		case message, ok := <-c.Send:
 			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if !ok {
-				c.Conn.WriteMessage(8, []byte{}) // Close message
+				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 
@@ -293,13 +357,13 @@ func (c *WebSocketClient) writePump() {
 				continue
 			}
 
-			if err := c.Conn.WriteMessage(1, data); err != nil {
+			if err := c.Conn.WriteMessage(websocket.TextMessage, data); err != nil {
 				return
 			}
 
 		case <-ticker.C:
 			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if err := c.Conn.WriteMessage(9, []byte{}); err != nil {
+			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
 		}
@@ -347,8 +411,14 @@ func (c *WebSocketClient) handleSubscribe(msg *WebSocketMessage) {
 		return
 	}
 
+	// Empty folder ID means subscribe to all
+	folderID := payload.FolderID
+	if folderID == "" {
+		folderID = ""
+	}
+
 	c.mu.Lock()
-	c.SubscribedFolders[payload.FolderID] = true
+	c.SubscribedFolders[folderID] = true
 	c.mu.Unlock()
 
 	c.Send <- &WebSocketMessage{
