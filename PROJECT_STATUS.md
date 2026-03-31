@@ -174,17 +174,17 @@ VaultDrift is a fully-functional, secure, distributed file storage system with e
 ## Architecture Overview
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                           Clients                                 │
-│  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐    │
-│  │ Web UI     │ │ CLI        │ │ Desktop    │ │ WebDAV     │    │
-│  │ (React 19) │ │ (Go)       │ │ (Tray)     │ │ Client     │    │
-│  └──────┬─────┘ └──────┬─────┘ └──────┬─────┘ └──────┬─────┘    │
-│         └──────────────┴──────┬───────┴──────────────┘           │
-│                               │                                   │
-│                    HTTP / WebSocket / WebDAV                     │
-└───────────────────────────────┬──────────────────────────────────┘
-                                │
+┌──────────────────────────────────────────────────────────────────────────┐
+│                              Clients                                      │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────────────┐ │
+│  │ Web UI   │ │ Mobile   │ │ CLI      │ │ Desktop  │ │ WebDAV         │ │
+│  │(React 19)│ │(RN/Expo) │ │ (Go)     │ │ (Tray)   │ │ Client         │ │
+│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘ └────────┬───────┘ │
+│       └─────────────┴───────────┴──────┬─────┴────────────────┘         │
+│                                        │                                 │
+│                         HTTP / WebSocket / WebDAV                       │
+└────────────────────────────────────────┼─────────────────────────────────┘
+                                         │
 ┌───────────────────────────────┼──────────────────────────────────┐
 │                           Server                                 │
 │  ┌────────────────────────────┼──────────────────────────────┐  │
@@ -255,6 +255,16 @@ vaultdrift/
 │   │   └── stores/               # Zustand state
 │   ├── index.html
 │   └── embed.go                  # Go embed
+├── mobile/                       # React Native mobile app
+│   ├── src/
+│   │   ├── api/                  # API client
+│   │   ├── navigation/           # React Navigation
+│   │   ├── screens/              # Screen components
+│   │   ├── stores/               # Zustand state
+│   │   └── utils/                # Utilities
+│   ├── App.tsx
+│   ├── app.json
+│   └── package.json
 ├── deploy/                       # Deployment configs
 │   └── kubernetes/
 ├── Dockerfile
@@ -285,6 +295,7 @@ vaultdrift/
 
 ### Clients
 - ✅ **Web UI** - React 19, Tailwind 4.1, responsive
+- ✅ **Mobile** - React Native, iOS & Android
 - ✅ **CLI** - Full-featured with sync daemon
 - ✅ **Desktop** - System tray with auto-sync
 - ✅ **WebDAV** - Class 2 compliant
@@ -312,7 +323,7 @@ vaultdrift/
 ## Next Steps / Roadmap
 
 ### Short Term
-- [ ] Mobile apps (React Native)
+- [x] Mobile apps (React Native)
 - [x] FUSE filesystem mount
 - [x] Office document preview
 - [x] Video streaming (HLS)
