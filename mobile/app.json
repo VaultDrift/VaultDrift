@@ -1,0 +1,59 @@
+{
+  "expo": {
+    "name": "VaultDrift",
+    "slug": "vaultdrift-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.vaultdrift.mobile",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "VaultDrift uses Face ID to securely unlock your files",
+        "NSPhotoLibraryUsageDescription": "VaultDrift needs access to save and upload photos",
+        "NSCameraUsageDescription": "VaultDrift uses the camera to upload photos directly"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f172a"
+      },
+      "package": "com.vaultdrift.mobile",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "VaultDrift uses Face ID to securely unlock your files"
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "VaultDrift uses Face ID to securely unlock your files"
+        }
+      ],
+      "expo-background-fetch"
+    ]
+  }
+}
