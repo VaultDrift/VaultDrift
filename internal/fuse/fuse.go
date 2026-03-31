@@ -372,7 +372,7 @@ func Mount(vfsService *vfs.VFS, database *db.Manager, userID, mountPoint string)
 	return fsys.Mount(mountPoint)
 }
 
-// Unmount unmounts the filesystem
-func Unmount(mountPoint string) error {
-	return fuse.Unmount(mountPoint)
+// Unmount unmounts the filesystem using the server
+func Unmount(server *fuse.Server) error {
+	return server.Unmount()
 }
