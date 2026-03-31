@@ -329,7 +329,7 @@ vaultdrift/
 - [x] Video streaming (HLS)
 
 ### Long Term
-- [ ] Federation between servers
+- [x] Federation between servers
 - [ ] IPFS backend
 - [ ] Blockchain anchoring
 - [ ] AI-powered organization

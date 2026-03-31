@@ -18,6 +18,7 @@ type Config struct {
 	Users      UsersConfig      `yaml:"users"`
 	SMTP       SMTPConfig       `yaml:"smtp"`
 	Logging    LoggingConfig    `yaml:"logging"`
+	Federation FederationConfig `yaml:"federation"`
 }
 
 // ServerConfig holds HTTP server configuration.
@@ -126,6 +127,17 @@ type LoggingConfig struct {
 	Format string `yaml:"format"` // json, text
 }
 
+// FederationConfig holds federation configuration.
+type FederationConfig struct {
+	Enabled       bool     `yaml:"enabled"`
+	ServerID      string   `yaml:"server_id"`
+	PublicURL     string   `yaml:"public_url"`
+	PrivateKey    string   `yaml:"private_key"`
+	PublicKey     string   `yaml:"public_key"`
+	TrustedPeers  []string `yaml:"trusted_peers"`
+	AutoDiscovery bool     `yaml:"auto_discovery"`
+}
+
 // DefaultConfig returns a Config with default values.
 func DefaultConfig() *Config {
 	return &Config{
@@ -194,6 +206,11 @@ func DefaultConfig() *Config {
 			File:   "/var/lib/vaultdrift/logs/vaultdrift.log",
 			Audit:  true,
 			Format: "json",
+		},
+		Federation: FederationConfig{
+			Enabled:       false, // Disabled by default
+			AutoDiscovery: false,
+			TrustedPeers:  []string{},
 		},
 	}
 }

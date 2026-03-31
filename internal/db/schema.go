@@ -284,6 +284,47 @@ func (m *Manager) migrationV1() error {
 			value TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		)`,
+
+		// Federation Peers table
+		`CREATE TABLE IF NOT EXISTS federation_peers (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			public_url TEXT NOT NULL,
+			public_key TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'active',
+			last_seen TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			capabilities TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_federation_peers_status ON federation_peers(status)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_federation_peers_url ON federation_peers(public_url)`,
+
+		// Federation Invites table
+		`CREATE TABLE IF NOT EXISTS federation_invites (
+			id TEXT PRIMARY KEY,
+			from_peer_id TEXT NOT NULL,
+			token TEXT UNIQUE NOT NULL,
+			expires_at TEXT NOT NULL,
+			used INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_federation_invites_token ON federation_invites(token)`,
+		`CREATE INDEX IF NOT EXISTS idx_federation_invites_expires ON federation_invites(expires_at)`,
+
+		// Federated Shares table
+		`CREATE TABLE IF NOT EXISTS federated_shares (
+			id TEXT PRIMARY KEY,
+			local_file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+			peer_id TEXT NOT NULL,
+			remote_user_id TEXT NOT NULL,
+			permission TEXT NOT NULL DEFAULT 'read',
+			token TEXT UNIQUE NOT NULL,
+			expires_at TEXT DEFAULT NULL,
+			created_at TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_federated_shares_file ON federated_shares(local_file_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_federated_shares_token ON federated_shares(token)`,
+		`CREATE INDEX IF NOT EXISTS idx_federated_shares_peer ON federated_shares(peer_id)`,
 	}
 
 	for _, query := range queries {

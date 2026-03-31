@@ -43,7 +43,7 @@ func setupTestServer(t *testing.T) (*Server, *db.Manager, func()) {
 		Host: "localhost",
 		Port: 0,
 	}
-	server := NewServer(cfg, database, authSvc, vfsService, store, []byte("test-secret"))
+	server := NewServer(cfg, database, authSvc, vfsService, store, []byte("test-secret"), nil)
 
 	cleanup := func() {
 		database.Close()

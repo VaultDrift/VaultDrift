@@ -67,7 +67,7 @@ func (s *TestSuite) CreateServer() *server.Server {
 		Host: "localhost",
 		Port: 0,
 	}
-	return server.NewServer(cfg, s.DB, s.Auth, s.VFS, s.Storage, []byte("test-secret"))
+	return server.NewServer(cfg, s.DB, s.Auth, s.VFS, s.Storage, []byte("test-secret"), nil)
 }
 
 // TestHealthCheck tests the health endpoint

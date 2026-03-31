@@ -10,6 +10,7 @@ import (
 	"github.com/vaultdrift/vaultdrift/internal/auth"
 	"github.com/vaultdrift/vaultdrift/internal/config"
 	"github.com/vaultdrift/vaultdrift/internal/db"
+	"github.com/vaultdrift/vaultdrift/internal/federation"
 	"github.com/vaultdrift/vaultdrift/internal/server"
 	"github.com/vaultdrift/vaultdrift/internal/storage"
 	"github.com/vaultdrift/vaultdrift/internal/vfs"
@@ -54,8 +55,24 @@ func main() {
 	// Initialize auth service
 	authSvc := auth.NewService(database, []byte(cfg.Auth.JWTSecret))
 
+	// Initialize federation manager (disabled by default)
+	fedCfg := federation.FederationConfig{
+		Enabled:       cfg.Federation.Enabled,
+		ServerID:      cfg.Federation.ServerID,
+		PublicURL:     cfg.Federation.PublicURL,
+		PrivateKey:    cfg.Federation.PrivateKey,
+		PublicKey:     cfg.Federation.PublicKey,
+		TrustedPeers:  cfg.Federation.TrustedPeers,
+		AutoDiscovery: cfg.Federation.AutoDiscovery,
+	}
+	fedMgr, err := federation.NewManager(fedCfg, database)
+	if err != nil {
+		log.Printf("Failed to initialize federation: %v", err)
+		fedMgr = nil
+	}
+
 	// Create server
-	srv := server.NewServer(cfg.Server, database, authSvc, vfsService, store, []byte(cfg.Auth.JWTSecret))
+	srv := server.NewServer(cfg.Server, database, authSvc, vfsService, store, []byte(cfg.Auth.JWTSecret), fedMgr)
 
 	// Setup graceful shutdown
 	sigChan := make(chan os.Signal, 1)

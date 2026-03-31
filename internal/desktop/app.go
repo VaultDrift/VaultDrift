@@ -53,8 +53,8 @@ func NewApp(cfg *config.Config) (*App, error) {
 	// Initialize auth service
 	authSvc := auth.NewService(database, []byte(cfg.Auth.JWTSecret))
 
-	// Create HTTP server
-	httpServer := server.NewServer(cfg.Server, database, authSvc, vfsService, store, []byte(cfg.Auth.JWTSecret))
+	// Create HTTP server (federation disabled for desktop)
+	httpServer := server.NewServer(cfg.Server, database, authSvc, vfsService, store, []byte(cfg.Auth.JWTSecret), nil)
 
 	// Create app
 	app := &App{

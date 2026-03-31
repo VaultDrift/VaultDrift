@@ -14,6 +14,7 @@ import (
 	"github.com/vaultdrift/vaultdrift/internal/auth"
 	"github.com/vaultdrift/vaultdrift/internal/config"
 	"github.com/vaultdrift/vaultdrift/internal/db"
+	"github.com/vaultdrift/vaultdrift/internal/federation"
 	"github.com/vaultdrift/vaultdrift/internal/media"
 	"github.com/vaultdrift/vaultdrift/internal/preview"
 	"github.com/vaultdrift/vaultdrift/internal/storage"
@@ -23,32 +24,34 @@ import (
 
 // Server is the HTTP server for VaultDrift.
 type Server struct {
-	httpServer *http.Server
-	router     *http.ServeMux
-	db         *db.Manager
-	authSvc    *auth.Service
-	vfs        *vfs.VFS
-	storage    storage.Backend
-	config     config.ServerConfig
-	jwtSecret  []byte
-	rbac       *auth.RBAC
-	events     *EventNotifier
+	httpServer  *http.Server
+	router      *http.ServeMux
+	db          *db.Manager
+	authSvc     *auth.Service
+	vfs         *vfs.VFS
+	storage     storage.Backend
+	config      config.ServerConfig
+	jwtSecret   []byte
+	rbac        *auth.RBAC
+	events      *EventNotifier
+	federation  *federation.Manager
 }
 
 // NewServer creates a new HTTP server.
-func NewServer(cfg config.ServerConfig, database *db.Manager, authService *auth.Service, vfsService *vfs.VFS, store storage.Backend, jwtSecret []byte) *Server {
+func NewServer(cfg config.ServerConfig, database *db.Manager, authService *auth.Service, vfsService *vfs.VFS, store storage.Backend, jwtSecret []byte, fed *federation.Manager) *Server {
 	router := http.NewServeMux()
 
 	s := &Server{
-		router:    router,
-		db:        database,
-		authSvc:   authService,
-		vfs:       vfsService,
-		storage:   store,
-		config:    cfg,
-		jwtSecret: jwtSecret,
-		rbac:      auth.NewRBAC(database),
-		events:    NewEventNotifier(vfsService, database),
+		router:     router,
+		db:         database,
+		authSvc:    authService,
+		vfs:        vfsService,
+		storage:    store,
+		config:     cfg,
+		jwtSecret:  jwtSecret,
+		rbac:       auth.NewRBAC(database),
+		events:     NewEventNotifier(vfsService, database),
+		federation: fed,
 	}
 
 	// Setup routes
@@ -157,6 +160,12 @@ func (s *Server) setupRoutes() {
 
 	// Real-time event streaming (SSE)
 	s.events.RegisterRoutes(s.router, authMiddleware)
+
+	// Federation handlers
+	if s.federation != nil && s.federation.IsEnabled() {
+		fedHandler := NewFederationHandler(s.federation)
+		fedHandler.RegisterRoutes(s.router, authMiddleware.Authenticate)
+	}
 
 	// Static files (for web UI) - embedded from web/dist
 	webFS := web.FS()
