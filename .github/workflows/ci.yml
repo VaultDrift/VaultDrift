@@ -41,14 +41,7 @@ jobs:
       run: |
         mkdir -p web/dist
         echo '<!DOCTYPE html><html><body>VaultDrift</body></html>' > web/dist/index.html
-        go test -v -coverprofile=coverage.out $(go list ./... | grep -v /desktop)
-
-    - name: Upload coverage
-      uses: codecov/codecov-action@v4
-      with:
-        file: ./coverage.out
-        flags: unittests
-        name: codecov-umbrella
+        go test -v $(go list ./... | grep -v /desktop)
 
   lint:
     runs-on: ubuntu-latest
@@ -84,13 +77,9 @@ jobs:
         echo '<!DOCTYPE html><html><body>VaultDrift</body></html>' > web/dist/index.html
 
     - name: Build server
-      env:
-        CGO_ENABLED: 0
       run: go build -o vaultdrift-server ./cmd/vaultdrift
 
     - name: Build CLI
-      env:
-        CGO_ENABLED: 0
       run: go build -o vaultdrift-cli ./cmd/vaultdrift-cli
 
   build-web:
