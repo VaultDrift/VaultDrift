@@ -14,6 +14,7 @@ import (
 	"github.com/vaultdrift/vaultdrift/internal/auth"
 	"github.com/vaultdrift/vaultdrift/internal/config"
 	"github.com/vaultdrift/vaultdrift/internal/db"
+	"github.com/vaultdrift/vaultdrift/internal/media"
 	"github.com/vaultdrift/vaultdrift/internal/storage"
 	"github.com/vaultdrift/vaultdrift/internal/vfs"
 	"github.com/vaultdrift/vaultdrift/web"
@@ -144,6 +145,10 @@ func (s *Server) setupRoutes() {
 	// Version handlers
 	versionHandler := NewVersionHandler(s.vfs)
 	versionHandler.RegisterRoutes(s.router, authMiddleware)
+
+	// Media streaming handlers (HLS transcoding)
+	mediaHandler := media.NewStreamHandler(s.vfs, s.db, s.storage)
+	mediaHandler.RegisterRoutes(s.router, authMiddleware.Authenticate)
 
 	// Real-time event streaming (SSE)
 	s.events.RegisterRoutes(s.router, authMiddleware)
