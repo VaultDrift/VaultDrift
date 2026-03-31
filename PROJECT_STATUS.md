@@ -313,9 +313,9 @@ vaultdrift/
 
 ### Short Term
 - [ ] Mobile apps (React Native)
-- [ ] FUSE filesystem mount
-- [ ] Office document preview
-- [ ] Video streaming
+- [x] FUSE filesystem mount
+- [x] Office document preview
+- [x] Video streaming (HLS)
 
 ### Long Term
 - [ ] Federation between servers
