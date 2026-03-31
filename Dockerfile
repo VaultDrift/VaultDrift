@@ -14,10 +14,10 @@ RUN go mod download
 COPY . .
 
 # Build web UI
-cd web && npm install && npm run build && cd ..
+RUN cd web && npm install && npm run build && cd ..
 
 # Build the server binary
-RUN CGO_ENABLED=0 go build -ldflags "-s -w" -o vaultdrift-server ./cmd/server
+RUN CGO_ENABLED=1 go build -ldflags "-s -w" -o vaultdrift-server ./cmd/vaultdrift
 
 # Runtime stage
 FROM alpine:3.19
