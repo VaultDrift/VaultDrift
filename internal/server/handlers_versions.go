@@ -108,9 +108,9 @@ func (h *VersionHandler) incrementVersion(w http.ResponseWriter, r *http.Request
 	}
 
 	SuccessResponse(w, map[string]any{
-		"file_id":      fileID,
-		"version":      newVersion,
+		"file_id":          fileID,
+		"version":          newVersion,
 		"previous_version": file.Version,
-		"comment":      req.Comment,
+		"comment":          req.Comment,
 	})
 }

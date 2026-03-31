@@ -6,9 +6,9 @@ import (
 
 // Common buffer sizes for the pool tiers.
 const (
-	SmallBufferSize  = 4 * 1024      // 4KB
-	MediumBufferSize = 64 * 1024     // 64KB
-	LargeBufferSize  = 1024 * 1024   // 1MB
+	SmallBufferSize  = 4 * 1024        // 4KB
+	MediumBufferSize = 64 * 1024       // 64KB
+	LargeBufferSize  = 1024 * 1024     // 1MB
 	XLargeBufferSize = 4 * 1024 * 1024 // 4MB
 )
 
@@ -86,7 +86,7 @@ func (p *BufferPool) Put(buf []byte) {
 		p.large.Put(&buf)
 	case cap == XLargeBufferSize:
 		p.xlarge.Put(&buf)
-	// else: let GC collect oversized buffers
+		// else: let GC collect oversized buffers
 	}
 }
 

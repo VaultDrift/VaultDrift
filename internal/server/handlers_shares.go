@@ -295,10 +295,10 @@ func (h *ShareHandler) getShare(w http.ResponseWriter, r *http.Request) {
 
 // updateShareRequest represents a share update request.
 type updateShareRequest struct {
-	MaxDownloads *int    `json:"max_downloads,omitempty"`
-	AllowUpload  *bool   `json:"allow_upload,omitempty"`
-	PreviewOnly  *bool   `json:"preview_only,omitempty"`
-	IsActive     *bool   `json:"is_active,omitempty"`
+	MaxDownloads *int  `json:"max_downloads,omitempty"`
+	AllowUpload  *bool `json:"allow_upload,omitempty"`
+	PreviewOnly  *bool `json:"preview_only,omitempty"`
+	IsActive     *bool `json:"is_active,omitempty"`
 }
 
 // updateShare updates share settings.

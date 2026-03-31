@@ -38,7 +38,7 @@ func TestUploadFlow(t *testing.T) {
 		}
 
 		var respWrapper struct {
-			Success bool                `json:"success"`
+			Success bool                 `json:"success"`
 			Data    createUploadResponse `json:"data"`
 		}
 		if err := json.Unmarshal(w.Body.Bytes(), &respWrapper); err != nil {
@@ -120,7 +120,7 @@ func TestUploadFlow(t *testing.T) {
 		}
 
 		var statusWrapper struct {
-			Success bool               `json:"success"`
+			Success bool                 `json:"success"`
 			Data    uploadStatusResponse `json:"data"`
 		}
 		json.Unmarshal(w.Body.Bytes(), &statusWrapper)
@@ -412,7 +412,7 @@ func TestMissingChunks(t *testing.T) {
 	}
 
 	var respWrapper struct {
-		Success bool               `json:"success"`
+		Success bool                 `json:"success"`
 		Data    uploadStatusResponse `json:"data"`
 	}
 	json.Unmarshal(w.Body.Bytes(), &respWrapper)

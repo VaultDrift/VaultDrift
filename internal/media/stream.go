@@ -515,4 +515,3 @@ func GetUserID(r *http.Request) string {
 	}
 	return ""
 }
-

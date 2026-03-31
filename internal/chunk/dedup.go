@@ -24,9 +24,9 @@ func NewDeduplicator(index ChunkIndex) *Deduplicator {
 
 // DeduplicateResult holds the result of deduplication.
 type DeduplicateResult struct {
-	NewChunks     []ChunkInfo // Chunks that need to be uploaded
+	NewChunks      []ChunkInfo // Chunks that need to be uploaded
 	ExistingHashes []string    // Hashes that already exist
-	AllHashes     []string    // All chunk hashes in order
+	AllHashes      []string    // All chunk hashes in order
 }
 
 // Process checks which chunks are new and which already exist.

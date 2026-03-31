@@ -178,7 +178,7 @@ func generateManifestID() (string, error) {
 
 // WrappedKeyInfo holds a wrapped (encrypted) file key.
 type WrappedKeyInfo struct {
-	WrappedKey []byte // The file key encrypted with a master key
+	WrappedKey  []byte // The file key encrypted with a master key
 	MasterKeyID string // Identifier for the master key used
 }
 

@@ -31,10 +31,10 @@ type ServerConfig struct {
 
 // TLSConfig holds TLS certificate configuration.
 type TLSConfig struct {
-	Enabled   bool   `yaml:"enabled"`
-	AutoCert  bool   `yaml:"auto_cert"`
-	CertFile  string `yaml:"cert_file"`
-	KeyFile   string `yaml:"key_file"`
+	Enabled  bool   `yaml:"enabled"`
+	AutoCert bool   `yaml:"auto_cert"`
+	CertFile string `yaml:"cert_file"`
+	KeyFile  string `yaml:"key_file"`
 }
 
 // StorageConfig holds storage backend configuration.
@@ -62,9 +62,9 @@ type S3Config struct {
 
 // IPFSConfig holds IPFS storage configuration.
 type IPFSConfig struct {
-	APIAddr  string `yaml:"api_addr"`   // Multiaddr of IPFS API
-	Gateway  string `yaml:"gateway"`    // IPFS Gateway URL
-	PinFiles bool   `yaml:"pin_files"`  // Whether to pin stored files
+	APIAddr  string `yaml:"api_addr"`  // Multiaddr of IPFS API
+	Gateway  string `yaml:"gateway"`   // IPFS Gateway URL
+	PinFiles bool   `yaml:"pin_files"` // Whether to pin stored files
 }
 
 // DatabaseConfig holds CobaltDB configuration.
@@ -74,12 +74,12 @@ type DatabaseConfig struct {
 
 // AuthConfig holds authentication configuration.
 type AuthConfig struct {
-	JWTSecret         string        `yaml:"jwt_secret"`
-	AccessTokenTTL    time.Duration `yaml:"access_token_ttl"`
-	RefreshTokenTTL   time.Duration `yaml:"refresh_token_ttl"`
-	TOTPEnabled       bool          `yaml:"totp_enabled"`
-	MaxLoginAttempts  int           `yaml:"max_login_attempts"`
-	LockoutDuration   time.Duration `yaml:"lockout_duration"`
+	JWTSecret        string        `yaml:"jwt_secret"`
+	AccessTokenTTL   time.Duration `yaml:"access_token_ttl"`
+	RefreshTokenTTL  time.Duration `yaml:"refresh_token_ttl"`
+	TOTPEnabled      bool          `yaml:"totp_enabled"`
+	MaxLoginAttempts int           `yaml:"max_login_attempts"`
+	LockoutDuration  time.Duration `yaml:"lockout_duration"`
 }
 
 // SyncConfig holds sync protocol configuration.
@@ -129,7 +129,7 @@ type SMTPConfig struct {
 
 // LoggingConfig holds logging configuration.
 type LoggingConfig struct {
-	Level  string `yaml:"level"`  // debug, info, warn, error
+	Level  string `yaml:"level"` // debug, info, warn, error
 	File   string `yaml:"file"`
 	Audit  bool   `yaml:"audit"`
 	Format string `yaml:"format"` // json, text
@@ -179,8 +179,8 @@ func DefaultConfig() *Config {
 			LockoutDuration:  15 * time.Minute,
 		},
 		Sync: SyncConfig{
-			ChunkSizeMin:           256 * 1024,     // 256KB
-			ChunkSizeAvg:           1024 * 1024,    // 1MB
+			ChunkSizeMin:           256 * 1024,      // 256KB
+			ChunkSizeAvg:           1024 * 1024,     // 1MB
 			ChunkSizeMax:           4 * 1024 * 1024, // 4MB
 			MaxConcurrentTransfers: 4,
 			WebSocketEnabled:       true,
@@ -202,7 +202,7 @@ func DefaultConfig() *Config {
 		Users: UsersConfig{
 			RegistrationEnabled: false,
 			DefaultQuota:        10 * 1024 * 1024 * 1024, // 10GB
-			MaxQuota:            0,                        // 0 = unlimited
+			MaxQuota:            0,                       // 0 = unlimited
 		},
 		SMTP: SMTPConfig{
 			Enabled: false,

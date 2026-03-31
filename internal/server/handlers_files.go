@@ -172,8 +172,8 @@ func (h *FileHandler) createFile(w http.ResponseWriter, r *http.Request) {
 
 // updateFileRequest represents an update file request.
 type updateFileRequest struct {
-	Name       string `json:"name,omitempty"`
-	ParentID   string `json:"parent_id,omitempty"`
+	Name     string `json:"name,omitempty"`
+	ParentID string `json:"parent_id,omitempty"`
 }
 
 // updateFile updates a file (rename or move).
@@ -235,8 +235,8 @@ func (h *FileHandler) updateFile(w http.ResponseWriter, r *http.Request) {
 			eventType = SSEventFileMoved
 		}
 		h.events.NotifyFileChange(userID, *file.ParentID, fileID, eventType, map[string]any{
-			"file_id":   fileID,
-			"new_name":  req.Name,
+			"file_id":    fileID,
+			"new_name":   req.Name,
 			"new_parent": req.ParentID,
 		})
 	}

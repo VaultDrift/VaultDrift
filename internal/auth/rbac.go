@@ -58,7 +58,7 @@ type Role struct {
 // RBAC handles role-based access control.
 type RBAC struct {
 	db    *db.Manager
-	roles map[string]*Role // in-memory cache
+	roles map[string]*Role        // in-memory cache
 	perms map[string][]Permission // userID -> permissions cache
 	mu    sync.RWMutex
 }
@@ -66,9 +66,9 @@ type RBAC struct {
 // NewRBAC creates a new RBAC engine.
 func NewRBAC(db *db.Manager) *RBAC {
 	rbac := &RBAC{
-		db:     db,
-		roles:  make(map[string]*Role),
-		perms:  make(map[string][]Permission),
+		db:    db,
+		roles: make(map[string]*Role),
+		perms: make(map[string][]Permission),
 	}
 
 	// Seed default roles
@@ -312,9 +312,9 @@ func (r *RBAC) RequireAdmin() MiddlewareFunc {
 type contextKey string
 
 const (
-	userIDKey  contextKey = "user_id"
-	rolesKey   contextKey = "roles"
-	scopeKey   contextKey = "scope"
+	userIDKey   contextKey = "user_id"
+	rolesKey    contextKey = "roles"
+	scopeKey    contextKey = "scope"
 	deviceIDKey contextKey = "device_id"
 )
 

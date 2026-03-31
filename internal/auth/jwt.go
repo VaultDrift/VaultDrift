@@ -34,24 +34,24 @@ type JWTHeader struct {
 
 // AccessClaims represents the claims in an access token.
 type AccessClaims struct {
-	UserID    string    `json:"user_id"`
-	Username  string    `json:"username"`
-	Roles     []string  `json:"roles"`
-	DeviceID  string    `json:"device_id"`
-	SessionID string    `json:"session_id"`
-	Exp       int64     `json:"exp"`
-	Iat       int64     `json:"iat"`
-	JTI       string    `json:"jti"`
+	UserID    string   `json:"user_id"`
+	Username  string   `json:"username"`
+	Roles     []string `json:"roles"`
+	DeviceID  string   `json:"device_id"`
+	SessionID string   `json:"session_id"`
+	Exp       int64    `json:"exp"`
+	Iat       int64    `json:"iat"`
+	JTI       string   `json:"jti"`
 }
 
 // RefreshClaims represents the claims in a refresh token.
 type RefreshClaims struct {
-	UserID   string `json:"user_id"`
-	DeviceID string `json:"device_id"`
+	UserID    string `json:"user_id"`
+	DeviceID  string `json:"device_id"`
 	SessionID string `json:"session_id"`
-	Exp      int64  `json:"exp"`
-	Iat      int64  `json:"iat"`
-	JTI      string `json:"jti"`
+	Exp       int64  `json:"exp"`
+	Iat       int64  `json:"iat"`
+	JTI       string `json:"jti"`
 }
 
 // TokenPair contains both access and refresh tokens.

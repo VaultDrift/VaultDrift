@@ -12,7 +12,7 @@ type PropFind struct {
 
 // Prop represents a list of properties
 type Prop struct {
-	XMLName    xml.Name     `xml:"prop"`
+	XMLName    xml.Name      `xml:"prop"`
 	Properties []PropertyDef `xml:",any"`
 }
 
@@ -49,10 +49,10 @@ type MultiStatus struct {
 
 // Response represents a single response in a Multi-Status
 type Response struct {
-	XMLName   xml.Name   `xml:"response"`
-	Href      string     `xml:"href"`
-	Property  []Property `xml:"propstat>prop>"`
-	Status    string     `xml:"propstat>status,omitempty"`
+	XMLName  xml.Name   `xml:"response"`
+	Href     string     `xml:"href"`
+	Property []Property `xml:"propstat>prop>"`
+	Status   string     `xml:"propstat>status,omitempty"`
 }
 
 // Property represents a single WebDAV property
@@ -96,14 +96,14 @@ type LockDiscovery struct {
 
 // ActiveLock represents an active lock
 type ActiveLock struct {
-	XMLName       xml.Name      `xml:"activelock"`
-	LockType      string        `xml:"locktype>write"`
-	LockScope     string        `xml:"lockscope>exclusive"`
-	Depth         string        `xml:"depth"`
-	Owner         Owner         `xml:"owner"`
-	Timeout       string        `xml:"timeout"`
-	LockToken     LockToken     `xml:"locktoken"`
-	LockRoot      LockRoot      `xml:"lockroot"`
+	XMLName   xml.Name  `xml:"activelock"`
+	LockType  string    `xml:"locktype>write"`
+	LockScope string    `xml:"lockscope>exclusive"`
+	Depth     string    `xml:"depth"`
+	Owner     Owner     `xml:"owner"`
+	Timeout   string    `xml:"timeout"`
+	LockToken LockToken `xml:"locktoken"`
+	LockRoot  LockRoot  `xml:"lockroot"`
 }
 
 // LockToken represents a lock token

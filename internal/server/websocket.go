@@ -79,10 +79,10 @@ type WebSocketServer struct {
 	db        *db.Manager
 	jwtSecret []byte
 
-	clients    map[string]*WebSocketClient
-	clientsMu  sync.RWMutex
-	userIndex  map[string][]string // userID -> clientIDs
-	userMu     sync.RWMutex
+	clients   map[string]*WebSocketClient
+	clientsMu sync.RWMutex
+	userIndex map[string][]string // userID -> clientIDs
+	userMu    sync.RWMutex
 
 	register   chan *WebSocketClient
 	unregister chan *WebSocketClient
@@ -490,8 +490,8 @@ func (c *WebSocketClient) handleSyncRequest(msg *WebSocketMessage) {
 	}
 
 	response := &WebSocketMessage{
-		Type:    WSMsgTypeSyncResponse,
-		ID:      msg.ID,
+		Type: WSMsgTypeSyncResponse,
+		ID:   msg.ID,
 		Payload: mustJSON(map[string]interface{}{
 			"folder_id": payload.FolderID,
 			"changes":   changes,

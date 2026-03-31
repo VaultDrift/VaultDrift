@@ -35,7 +35,9 @@ type GCWorker struct {
 }
 
 // NewGCWorker creates a new garbage collection worker
-func NewGCWorker(database *db.Manager, store interface{ Delete(ctx context.Context, id string) error }) *GCWorker {
+func NewGCWorker(database *db.Manager, store interface {
+	Delete(ctx context.Context, id string) error
+}) *GCWorker {
 	return &GCWorker{
 		db:      database,
 		storage: store,

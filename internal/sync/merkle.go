@@ -8,11 +8,11 @@ import (
 
 // MerkleNode represents a node in the Merkle tree.
 type MerkleNode struct {
-	Hash     string       `json:"hash"`
-	Path     string       `json:"path"`
-	IsFile   bool         `json:"is_file"`
-	Size     int64        `json:"size"`
-	ModTime  int64        `json:"mod_time"`
+	Hash     string        `json:"hash"`
+	Path     string        `json:"path"`
+	IsFile   bool          `json:"is_file"`
+	Size     int64         `json:"size"`
+	ModTime  int64         `json:"mod_time"`
 	Children []*MerkleNode `json:"children,omitempty"`
 }
 

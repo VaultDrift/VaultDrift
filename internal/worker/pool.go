@@ -11,11 +11,11 @@ import (
 
 // Job represents a unit of work
 type Job struct {
-	ID       string
-	Type     string
-	Payload  interface{}
-	Priority int // Higher = more important
-	Retries  int
+	ID         string
+	Type       string
+	Payload    interface{}
+	Priority   int // Higher = more important
+	Retries    int
 	MaxRetries int
 }
 
@@ -39,9 +39,9 @@ type Queue interface {
 
 // MemoryQueue is an in-memory job queue
 type MemoryQueue struct {
-	mu    sync.Mutex
-	jobs  []Job
-	cond  *sync.Cond
+	mu   sync.Mutex
+	jobs []Job
+	cond *sync.Cond
 }
 
 // NewMemoryQueue creates a new in-memory queue
@@ -102,15 +102,15 @@ func (q *MemoryQueue) Len() int {
 
 // WorkerPool manages a pool of workers
 type WorkerPool struct {
-	queue      Queue
-	handlers   map[string]Handler
-	workers    int
-	results    chan Result
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
-	mu         sync.RWMutex
-	running    bool
+	queue    Queue
+	handlers map[string]Handler
+	workers  int
+	results  chan Result
+	ctx      context.Context
+	cancel   context.CancelFunc
+	wg       sync.WaitGroup
+	mu       sync.RWMutex
+	running  bool
 }
 
 // NewWorkerPool creates a new worker pool
@@ -268,9 +268,9 @@ type scheduledTask struct {
 func NewScheduler(pool *WorkerPool) *Scheduler {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Scheduler{
-		pool:  pool,
-		tasks: make(map[string]*scheduledTask),
-		ctx:   ctx,
+		pool:   pool,
+		tasks:  make(map[string]*scheduledTask),
+		ctx:    ctx,
 		cancel: cancel,
 	}
 }

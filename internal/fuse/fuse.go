@@ -28,21 +28,21 @@ type VaultDriftFS struct {
 // DirNode represents a directory in the filesystem
 type DirNode struct {
 	fs.Inode
-	vfs       *vfs.VFS
-	db        *db.Manager
-	userID    string
-	folderID  string
+	vfs      *vfs.VFS
+	db       *db.Manager
+	userID   string
+	folderID string
 }
 
 // FileNode represents a file in the filesystem
 type FileNode struct {
 	fs.Inode
-	vfs      *vfs.VFS
-	db       *db.Manager
-	userID   string
-	fileID   string
-	size     uint64
-	mode     uint32
+	vfs    *vfs.VFS
+	db     *db.Manager
+	userID string
+	fileID string
+	size   uint64
+	mode   uint32
 }
 
 // FileHandle represents an open file
@@ -54,18 +54,18 @@ type FileHandle struct {
 
 // Ensure interfaces are implemented
 var (
-	_ fs.NodeOpener     = (*FileNode)(nil)
-	_ fs.NodeReader     = (*FileNode)(nil)
-	_ fs.NodeWriter     = (*FileNode)(nil)
-	_ fs.NodeSetattrer  = (*FileNode)(nil)
-	_ fs.NodeGetattrer  = (*FileNode)(nil)
-	_ fs.NodeCreater    = (*DirNode)(nil)
-	_ fs.NodeMkdirer    = (*DirNode)(nil)
-	_ fs.NodeRmdirer    = (*DirNode)(nil)
-	_ fs.NodeUnlinker   = (*DirNode)(nil)
-	_ fs.NodeReaddirer  = (*DirNode)(nil)
-	_ fs.NodeLookuper   = (*DirNode)(nil)
-	_ fs.NodeGetattrer  = (*DirNode)(nil)
+	_ fs.NodeOpener    = (*FileNode)(nil)
+	_ fs.NodeReader    = (*FileNode)(nil)
+	_ fs.NodeWriter    = (*FileNode)(nil)
+	_ fs.NodeSetattrer = (*FileNode)(nil)
+	_ fs.NodeGetattrer = (*FileNode)(nil)
+	_ fs.NodeCreater   = (*DirNode)(nil)
+	_ fs.NodeMkdirer   = (*DirNode)(nil)
+	_ fs.NodeRmdirer   = (*DirNode)(nil)
+	_ fs.NodeUnlinker  = (*DirNode)(nil)
+	_ fs.NodeReaddirer = (*DirNode)(nil)
+	_ fs.NodeLookuper  = (*DirNode)(nil)
+	_ fs.NodeGetattrer = (*DirNode)(nil)
 )
 
 // NewVaultDriftFS creates a new FUSE filesystem

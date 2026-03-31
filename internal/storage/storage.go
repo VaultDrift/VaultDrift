@@ -34,10 +34,10 @@ type Backend interface {
 
 // StorageStats holds storage statistics.
 type StorageStats struct {
-	TotalBytes   int64
-	UsedBytes    int64
-	ChunkCount   int64
-	BackendType  string
+	TotalBytes  int64
+	UsedBytes   int64
+	ChunkCount  int64
+	BackendType string
 }
 
 // NewBackend creates a storage backend based on configuration.

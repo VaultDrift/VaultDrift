@@ -14,12 +14,12 @@ import (
 
 // TestSuite provides an integration test harness
 type TestSuite struct {
-	DB        *db.Manager
-	Storage   storage.Backend
-	Auth      *auth.Service
-	VFS       *vfs.VFS
-	Token     string
-	TmpDir    string
+	DB      *db.Manager
+	Storage storage.Backend
+	Auth    *auth.Service
+	VFS     *vfs.VFS
+	Token   string
+	TmpDir  string
 }
 
 // SetupTestSuite creates a test server with temporary storage

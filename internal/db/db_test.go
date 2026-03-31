@@ -239,4 +239,3 @@ func TestUserOperations(t *testing.T) {
 		t.Logf("✅ Duplicate user detection working")
 	})
 }
-

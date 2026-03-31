@@ -24,17 +24,17 @@ import (
 
 // Server is the HTTP server for VaultDrift.
 type Server struct {
-	httpServer  *http.Server
-	router      *http.ServeMux
-	db          *db.Manager
-	authSvc     *auth.Service
-	vfs         *vfs.VFS
-	storage     storage.Backend
-	config      config.ServerConfig
-	jwtSecret   []byte
-	rbac        *auth.RBAC
-	events      *EventNotifier
-	federation  *federation.Manager
+	httpServer *http.Server
+	router     *http.ServeMux
+	db         *db.Manager
+	authSvc    *auth.Service
+	vfs        *vfs.VFS
+	storage    storage.Backend
+	config     config.ServerConfig
+	jwtSecret  []byte
+	rbac       *auth.RBAC
+	events     *EventNotifier
+	federation *federation.Manager
 }
 
 // NewServer creates a new HTTP server.

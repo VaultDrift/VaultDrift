@@ -170,8 +170,8 @@ func (h *FederationHandler) handleCreateInvite(w http.ResponseWriter, r *http.Re
 
 func (h *FederationHandler) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"status":    "healthy",
-		"server_id": h.fed.GetConfig().ServerID,
+		"status":     "healthy",
+		"server_id":  h.fed.GetConfig().ServerID,
 		"federation": h.fed.IsEnabled(),
 	})
 }
@@ -265,7 +265,7 @@ func (h *FederationHandler) handleJoin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Token    string                     `json:"token"`
+		Token    string                      `json:"token"`
 		PeerInfo federation.PeerAnnouncement `json:"peer_info"`
 	}
 

@@ -22,9 +22,9 @@ type FederationConfig struct {
 // FederationMessage represents an inter-server message
 type FederationMessage struct {
 	ID        string    `json:"id"`
-	From      string    `json:"from"`      // Server ID
-	To        string    `json:"to"`        // Target Server ID
-	Type      string    `json:"type"`      // peer_announce, share_request, sync_request, etc.
+	From      string    `json:"from"` // Server ID
+	To        string    `json:"to"`   // Target Server ID
+	Type      string    `json:"type"` // peer_announce, share_request, sync_request, etc.
 	Payload   []byte    `json:"payload"`
 	Signature []byte    `json:"signature"`
 	Timestamp time.Time `json:"timestamp"`

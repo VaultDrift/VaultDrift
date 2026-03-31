@@ -42,12 +42,12 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, auth func(http.Handler) htt
 
 // PreviewInfo represents preview metadata
 type PreviewInfo struct {
-	FileID          string   `json:"file_id"`
-	CanPreview      bool     `json:"can_preview"`
-	PreviewType     string   `json:"preview_type,omitempty"`
-	Status          string   `json:"status"`
-	SupportedTypes  []string `json:"supported_types"`
-	ConverterEnabled bool    `json:"converter_enabled"`
+	FileID           string   `json:"file_id"`
+	CanPreview       bool     `json:"can_preview"`
+	PreviewType      string   `json:"preview_type,omitempty"`
+	Status           string   `json:"status"`
+	SupportedTypes   []string `json:"supported_types"`
+	ConverterEnabled bool     `json:"converter_enabled"`
 }
 
 func (h *Handler) handlePreviewInfo(w http.ResponseWriter, r *http.Request) {
@@ -228,7 +228,7 @@ func (h *Handler) handleGeneratePreview(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
-		"status": "generating",
+		"status":  "generating",
 		"file_id": fileID,
 	})
 }

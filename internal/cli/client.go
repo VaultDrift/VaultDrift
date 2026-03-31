@@ -129,15 +129,15 @@ func (c *Client) Logout() error {
 
 // File represents a file or folder
 type File struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Type      string `json:"type"` // "file" or "folder"
-	Size      int64  `json:"size"`
-	MimeType  string `json:"mime_type"`
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	Type      string  `json:"type"` // "file" or "folder"
+	Size      int64   `json:"size"`
+	MimeType  string  `json:"mime_type"`
 	ParentID  *string `json:"parent_id"`
-	UserID    string `json:"user_id"`
-	CreatedAt int64  `json:"created_at"`
-	UpdatedAt int64  `json:"updated_at"`
+	UserID    string  `json:"user_id"`
+	CreatedAt int64   `json:"created_at"`
+	UpdatedAt int64   `json:"updated_at"`
 }
 
 // ListFiles lists files in a folder

@@ -185,22 +185,30 @@ func parseGoDuration(s string) (int64, error) {
 		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
 			numStr += string(ch)
 		case 's':
-			if numStr == "" { return 0, fmt.Errorf("invalid duration") }
+			if numStr == "" {
+				return 0, fmt.Errorf("invalid duration")
+			}
 			n, _ := strconv.ParseInt(numStr, 10, 64)
 			total += n * 1e9 // seconds to nanoseconds
 			numStr = ""
 		case 'm':
-			if numStr == "" { return 0, fmt.Errorf("invalid duration") }
+			if numStr == "" {
+				return 0, fmt.Errorf("invalid duration")
+			}
 			n, _ := strconv.ParseInt(numStr, 10, 64)
 			total += n * 60 * 1e9 // minutes to nanoseconds
 			numStr = ""
 		case 'h':
-			if numStr == "" { return 0, fmt.Errorf("invalid duration") }
+			if numStr == "" {
+				return 0, fmt.Errorf("invalid duration")
+			}
 			n, _ := strconv.ParseInt(numStr, 10, 64)
 			total += n * 60 * 60 * 1e9 // hours to nanoseconds
 			numStr = ""
 		case 'd':
-			if numStr == "" { return 0, fmt.Errorf("invalid duration") }
+			if numStr == "" {
+				return 0, fmt.Errorf("invalid duration")
+			}
 			n, _ := strconv.ParseInt(numStr, 10, 64)
 			total += n * 24 * 60 * 60 * 1e9 // days to nanoseconds
 			numStr = ""

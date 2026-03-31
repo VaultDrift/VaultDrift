@@ -14,18 +14,18 @@ import (
 type contextKey string
 
 const (
-	userIDKey    contextKey = "user_id"
-	usernameKey  contextKey = "username"
-	rolesKey     contextKey = "roles"
-	deviceIDKey  contextKey = "device_id"
+	userIDKey   contextKey = "user_id"
+	usernameKey contextKey = "username"
+	rolesKey    contextKey = "roles"
+	deviceIDKey contextKey = "device_id"
 )
 
 // AuthMiddleware handles authentication for HTTP requests.
 type AuthMiddleware struct {
-	authService    *auth.Service
+	authService     *auth.Service
 	apiTokenService *auth.APITokenService
-	rbac           *auth.RBAC
-	jwtSecret      []byte
+	rbac            *auth.RBAC
+	jwtSecret       []byte
 }
 
 // NewAuthMiddleware creates a new authentication middleware.

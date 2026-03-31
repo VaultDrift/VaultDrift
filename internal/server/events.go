@@ -38,8 +38,8 @@ const (
 
 // EventNotifier handles real-time event notifications using SSE
 type EventNotifier struct {
-	vfs       *vfs.VFS
-	db        *db.Manager
+	vfs *vfs.VFS
+	db  *db.Manager
 
 	subscribers map[string]*EventSubscriber
 	mu          sync.RWMutex

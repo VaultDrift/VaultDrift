@@ -22,19 +22,19 @@ type UploadHandler struct {
 
 // UploadSession represents an active upload session.
 type UploadSession struct {
-	ID           string             `json:"id"`
-	UserID       string             `json:"user_id"`
-	ParentID     string             `json:"parent_id"`
-	FileName     string             `json:"file_name"`
-	Size         int64              `json:"size"`
-	MimeType     string             `json:"mime_type"`
-	Checksum     string             `json:"checksum,omitempty"`
-	Status       string             `json:"status"`
-	CreatedAt    time.Time          `json:"created_at"`
-	ExpiresAt    time.Time          `json:"expires_at"`
-	Chunks       map[int]*ChunkInfo `json:"chunks,omitempty"`
-	TotalChunks  int                `json:"total_chunks"`
-	ChunksMutex  sync.RWMutex       `json:"-"`
+	ID          string             `json:"id"`
+	UserID      string             `json:"user_id"`
+	ParentID    string             `json:"parent_id"`
+	FileName    string             `json:"file_name"`
+	Size        int64              `json:"size"`
+	MimeType    string             `json:"mime_type"`
+	Checksum    string             `json:"checksum,omitempty"`
+	Status      string             `json:"status"`
+	CreatedAt   time.Time          `json:"created_at"`
+	ExpiresAt   time.Time          `json:"expires_at"`
+	Chunks      map[int]*ChunkInfo `json:"chunks,omitempty"`
+	TotalChunks int                `json:"total_chunks"`
+	ChunksMutex sync.RWMutex       `json:"-"`
 }
 
 // ChunkInfo represents information about an uploaded chunk.
@@ -64,12 +64,12 @@ type createUploadResponse struct {
 
 // uploadStatusResponse represents the upload status response.
 type uploadStatusResponse struct {
-	SessionID     string      `json:"session_id"`
-	Status        string      `json:"status"`
-	UploadedBytes int64       `json:"uploaded_bytes"`
-	TotalBytes    int64       `json:"total_bytes"`
-	MissingChunks []int       `json:"missing_chunks,omitempty"`
-	UploadedChunks []int      `json:"uploaded_chunks,omitempty"`
+	SessionID      string `json:"session_id"`
+	Status         string `json:"status"`
+	UploadedBytes  int64  `json:"uploaded_bytes"`
+	TotalBytes     int64  `json:"total_bytes"`
+	MissingChunks  []int  `json:"missing_chunks,omitempty"`
+	UploadedChunks []int  `json:"uploaded_chunks,omitempty"`
 }
 
 const (
@@ -291,8 +291,8 @@ func (h *UploadHandler) uploadChunk(w http.ResponseWriter, r *http.Request) {
 	session.ChunksMutex.Unlock()
 
 	SuccessResponse(w, map[string]any{
-		"status":       "uploaded",
-		"chunk_index":  chunkIndex,
+		"status":         "uploaded",
+		"chunk_index":    chunkIndex,
 		"bytes_received": n,
 	})
 }
@@ -359,8 +359,8 @@ func (h *UploadHandler) completeUpload(w http.ResponseWriter, r *http.Request) {
 	h.sessionsMutex.Unlock()
 
 	SuccessResponse(w, map[string]any{
-		"status":   "completed",
-		"file":     file,
+		"status": "completed",
+		"file":   file,
 	})
 }
 

@@ -7,8 +7,8 @@ import (
 
 // CLI represents the command-line interface
 type CLI struct {
-	config  *Config
-	client  *Client
+	config    *Config
+	client    *Client
 	configMgr *ConfigManager
 }
 

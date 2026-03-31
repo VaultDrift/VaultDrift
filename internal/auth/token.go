@@ -17,7 +17,7 @@ import (
 // API token constants.
 const (
 	APITokenPrefix = "vd_" // VaultDrift API token prefix
-	APITokenLength = 48     // Length of the raw token (excluding prefix)
+	APITokenLength = 48    // Length of the raw token (excluding prefix)
 )
 
 var (
@@ -41,12 +41,12 @@ func NewAPITokenService(db *db.Manager) *APITokenService {
 
 // GenerateTokenResult contains the generated token information.
 type GenerateTokenResult struct {
-	Token      string   // The raw token (returned once)
-	TokenID    string   // The token ID (for revocation)
-	Name       string   // Token name
-	UserID     string   // Owner user ID
+	Token       string   // The raw token (returned once)
+	TokenID     string   // The token ID (for revocation)
+	Name        string   // Token name
+	UserID      string   // Owner user ID
 	Permissions []string // Scoped permissions
-	ExpiresAt  *time.Time
+	ExpiresAt   *time.Time
 }
 
 // GenerateToken creates a new API token with scoped permissions.

@@ -176,9 +176,9 @@ func (h *TrashHandler) emptyTrash(w http.ResponseWriter, r *http.Request) {
 	}
 
 	SuccessResponse(w, map[string]any{
-		"status":        "emptied",
-		"deleted":       deletedCount,
-		"failed":        failedCount,
-		"total":         len(items),
+		"status":  "emptied",
+		"deleted": deletedCount,
+		"failed":  failedCount,
+		"total":   len(items),
 	})
 }

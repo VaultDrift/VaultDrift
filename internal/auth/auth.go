@@ -23,36 +23,36 @@ var (
 
 // BruteForceConfig configures brute-force protection.
 type BruteForceConfig struct {
-	MaxAttempts     int
-	LockoutDuration time.Duration
+	MaxAttempts      int
+	LockoutDuration  time.Duration
 	ProgressiveDelay bool
 }
 
 // DefaultBruteForceConfig returns default brute-force settings.
 func DefaultBruteForceConfig() *BruteForceConfig {
 	return &BruteForceConfig{
-		MaxAttempts:     5,
-		LockoutDuration: 15 * time.Minute,
+		MaxAttempts:      5,
+		LockoutDuration:  15 * time.Minute,
 		ProgressiveDelay: true,
 	}
 }
 
 // FailedAttempt tracks failed login attempts.
 type FailedAttempt struct {
-	Count      int
-	LastFailed time.Time
+	Count       int
+	LastFailed  time.Time
 	LockedUntil *time.Time
 }
 
 // Service handles authentication operations.
 type Service struct {
-	db           *db.Manager
-	jwtSigner    *JWTSigner
-	totp         *TOTP
-	bruteConfig  *BruteForceConfig
+	db             *db.Manager
+	jwtSigner      *JWTSigner
+	totp           *TOTP
+	bruteConfig    *BruteForceConfig
 	failedAttempts map[string]*FailedAttempt
-	attemptsMu   sync.RWMutex
-	sessionTTL   time.Duration
+	attemptsMu     sync.RWMutex
+	sessionTTL     time.Duration
 }
 
 // ServiceOption configures the auth service.
@@ -92,10 +92,10 @@ func NewService(db *db.Manager, jwtSecret []byte, opts ...ServiceOption) *Servic
 
 // LoginResult contains the result of a successful login.
 type LoginResult struct {
-	Tokens    *TokenPair
-	SessionID string
+	Tokens       *TokenPair
+	SessionID    string
 	RequiresTOTP bool
-	TOTPSession string // Temporary session ID for TOTP verification
+	TOTPSession  string // Temporary session ID for TOTP verification
 }
 
 // Login authenticates a user and returns tokens.

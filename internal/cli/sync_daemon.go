@@ -12,12 +12,12 @@ import (
 
 // SyncDaemon handles background synchronization
 type SyncDaemon struct {
-	cli       *CLI
-	watchDir  string
-	watcher   *fsnotify.Watcher
-	stopCh    chan struct{}
-	wg        sync.WaitGroup
-	debounce  map[string]*time.Timer
+	cli        *CLI
+	watchDir   string
+	watcher    *fsnotify.Watcher
+	stopCh     chan struct{}
+	wg         sync.WaitGroup
+	debounce   map[string]*time.Timer
 	debounceMu sync.Mutex
 }
 

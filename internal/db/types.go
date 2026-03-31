@@ -6,24 +6,24 @@ import (
 
 // User represents a user account.
 type User struct {
-	ID                  string    `json:"id"`
-	Username            string    `json:"username"`
-	Email               string    `json:"email"`
-	DisplayName         string    `json:"display_name"`
-	PasswordHash        string    `json:"-"`
-	Role                string    `json:"role"`
-	QuotaBytes          int64     `json:"quota_bytes"`
-	UsedBytes           int64     `json:"used_bytes"`
-	TOTPSecret          *string   `json:"-"`
-	TOTPEnabled         bool      `json:"totp_enabled"`
-	PublicKey           []byte    `json:"-"`
-	EncryptedPrivateKey []byte    `json:"-"`
-	RecoveryKeyHash     *string   `json:"-"`
-	AvatarChunkHash     *string   `json:"-"`
-	Status              string    `json:"status"`
+	ID                  string     `json:"id"`
+	Username            string     `json:"username"`
+	Email               string     `json:"email"`
+	DisplayName         string     `json:"display_name"`
+	PasswordHash        string     `json:"-"`
+	Role                string     `json:"role"`
+	QuotaBytes          int64      `json:"quota_bytes"`
+	UsedBytes           int64      `json:"used_bytes"`
+	TOTPSecret          *string    `json:"-"`
+	TOTPEnabled         bool       `json:"totp_enabled"`
+	PublicKey           []byte     `json:"-"`
+	EncryptedPrivateKey []byte     `json:"-"`
+	RecoveryKeyHash     *string    `json:"-"`
+	AvatarChunkHash     *string    `json:"-"`
+	Status              string     `json:"status"`
 	LastLoginAt         *time.Time `json:"last_login_at"`
-	CreatedAt           time.Time `json:"created_at"`
-	UpdatedAt           time.Time `json:"updated_at"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
 }
 
 // Session represents an active user session.
@@ -42,48 +42,48 @@ type Session struct {
 
 // APIToken represents an API access token.
 type APIToken struct {
-	ID          string    `json:"id"`
-	UserID      string    `json:"user_id"`
-	Name        string    `json:"name"`
-	TokenHash   string    `json:"-"`
-	Permissions []string  `json:"permissions"`
+	ID          string     `json:"id"`
+	UserID      string     `json:"user_id"`
+	Name        string     `json:"name"`
+	TokenHash   string     `json:"-"`
+	Permissions []string   `json:"permissions"`
 	LastUsedAt  *time.Time `json:"last_used_at"`
 	ExpiresAt   *time.Time `json:"expires_at"`
-	CreatedAt   time.Time `json:"created_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 // File represents a file or folder in the virtual filesystem.
 type File struct {
-	ID            string    `json:"id"`
-	UserID        string    `json:"user_id"`
-	ParentID      *string   `json:"parent_id"`
-	Name          string    `json:"name"`
-	NameEncrypted []byte    `json:"-"`
-	Type          string    `json:"type"` // "file" or "folder"
-	SizeBytes     int64     `json:"size_bytes"`
-	MimeType      string    `json:"mime_type"`
-	ManifestID    *string   `json:"manifest_id"`
-	Checksum      *string   `json:"checksum"`
-	IsEncrypted   bool      `json:"is_encrypted"`
-	EncryptedKey  []byte    `json:"-"`
-	IsTrashed     bool      `json:"is_trashed"`
+	ID            string     `json:"id"`
+	UserID        string     `json:"user_id"`
+	ParentID      *string    `json:"parent_id"`
+	Name          string     `json:"name"`
+	NameEncrypted []byte     `json:"-"`
+	Type          string     `json:"type"` // "file" or "folder"
+	SizeBytes     int64      `json:"size_bytes"`
+	MimeType      string     `json:"mime_type"`
+	ManifestID    *string    `json:"manifest_id"`
+	Checksum      *string    `json:"checksum"`
+	IsEncrypted   bool       `json:"is_encrypted"`
+	EncryptedKey  []byte     `json:"-"`
+	IsTrashed     bool       `json:"is_trashed"`
 	TrashedAt     *time.Time `json:"trashed_at"`
-	Version       int       `json:"version"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	Version       int        `json:"version"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
 // Manifest represents a file version manifest.
 type Manifest struct {
-	ID          string    `json:"id"`
-	FileID      string    `json:"file_id"`
-	Version     int       `json:"version"`
-	SizeBytes   int64     `json:"size_bytes"`
-	ChunkCount  int       `json:"chunk_count"`
-	Chunks      []string  `json:"chunks"`
-	Checksum    string    `json:"checksum"`
-	DeviceID    string    `json:"device_id"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID         string    `json:"id"`
+	FileID     string    `json:"file_id"`
+	Version    int       `json:"version"`
+	SizeBytes  int64     `json:"size_bytes"`
+	ChunkCount int       `json:"chunk_count"`
+	Chunks     []string  `json:"chunks"`
+	Checksum   string    `json:"checksum"`
+	DeviceID   string    `json:"device_id"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // Chunk represents a content-addressed chunk.
@@ -121,28 +121,28 @@ type Share struct {
 
 // Device represents a synced device.
 type Device struct {
-	ID           string    `json:"id"`
-	UserID       string    `json:"user_id"`
-	Name         string    `json:"name"`
-	DeviceType   string    `json:"device_type"`
-	OS           string    `json:"os"`
-	SyncFolder   string    `json:"sync_folder"`
-	LastSyncAt   *time.Time `json:"last_sync_at"`
-	VectorClock  string    `json:"vector_clock"`
-	MerkleRoot   *string   `json:"merkle_root"`
-	IsActive     bool      `json:"is_active"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID          string     `json:"id"`
+	UserID      string     `json:"user_id"`
+	Name        string     `json:"name"`
+	DeviceType  string     `json:"device_type"`
+	OS          string     `json:"os"`
+	SyncFolder  string     `json:"sync_folder"`
+	LastSyncAt  *time.Time `json:"last_sync_at"`
+	VectorClock string     `json:"vector_clock"`
+	MerkleRoot  *string    `json:"merkle_root"`
+	IsActive    bool       `json:"is_active"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
 // SyncState represents the sync state for a file on a device.
 type SyncState struct {
-	ID           string    `json:"id"`
-	DeviceID     string    `json:"device_id"`
-	FileID       string    `json:"file_id"`
-	ManifestID   string    `json:"manifest_id"`
-	VectorClock  string    `json:"vector_clock"`
-	SyncedAt     time.Time `json:"synced_at"`
+	ID          string    `json:"id"`
+	DeviceID    string    `json:"device_id"`
+	FileID      string    `json:"file_id"`
+	ManifestID  string    `json:"manifest_id"`
+	VectorClock string    `json:"vector_clock"`
+	SyncedAt    time.Time `json:"synced_at"`
 }
 
 // Role represents a user role.

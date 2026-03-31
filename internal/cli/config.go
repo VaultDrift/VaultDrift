@@ -11,9 +11,9 @@ import (
 
 // Config holds CLI configuration
 type Config struct {
-	ServerURL string `json:"server_url"`
-	Token     string `json:"token,omitempty"`
-	Username  string `json:"username,omitempty"`
+	ServerURL  string `json:"server_url"`
+	Token      string `json:"token,omitempty"`
+	Username   string `json:"username,omitempty"`
 	DefaultDir string `json:"default_dir,omitempty"`
 }
 

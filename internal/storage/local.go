@@ -175,9 +175,9 @@ func (b *LocalBackend) Stats(ctx context.Context) (*StorageStats, error) {
 	// Get filesystem stats for total capacity
 	// This is platform-specific; for now return 0 for total
 	return &StorageStats{
-		TotalBytes:   0, // Would need platform-specific code
-		UsedBytes:    totalBytes,
-		ChunkCount:   chunkCount,
-		BackendType:  "local",
+		TotalBytes:  0, // Would need platform-specific code
+		UsedBytes:   totalBytes,
+		ChunkCount:  chunkCount,
+		BackendType: "local",
 	}, nil
 }
