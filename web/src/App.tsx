@@ -8,9 +8,11 @@ import { SharedPage } from '@/pages/Shared';
 import { RecentPage } from '@/pages/Recent';
 import { TrashPage } from '@/pages/Trash';
 import { SettingsPage } from '@/pages/Settings';
+import { AdminPage } from '@/pages/Admin';
+import { SyncPage } from '@/pages/Sync';
 
 function App() {
-  const { isAuthenticated, fetchUser } = useAuthStore();
+  const { isAuthenticated, fetchUser, user } = useAuthStore();
 
   useEffect(() => {
     // Try to restore session on mount
@@ -24,6 +26,8 @@ function App() {
     return <LoginPage />;
   }
 
+  const isAdmin = user?.role === 'admin';
+
   return (
     <Layout>
       <Routes>
@@ -34,6 +38,9 @@ function App() {
         <Route path="/recent" element={<RecentPage />} />
         <Route path="/trash" element={<TrashPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/sync" element={<SyncPage />} />
+        {isAdmin && <Route path="/admin" element={<AdminPage />} />}
+        <Route path="*" element={<Navigate to="/files" replace />} />
       </Routes>
     </Layout>
   );

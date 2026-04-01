@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { FolderOpen, Users, Clock, Trash2, Settings, LogOut, Cloud } from 'lucide-react';
+import { FolderOpen, Users, Clock, Trash2, Settings, LogOut, Cloud, Shield, RefreshCw } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { cn } from '@/lib/utils';
 
@@ -12,6 +12,7 @@ const navItems = [
 
 export function Sidebar() {
   const { user, logout } = useAuthStore();
+  const isAdmin = user?.role === 'admin';
 
   const usedGB = (user?.used_bytes || 0) / (1024 * 1024 * 1024);
   const quotaGB = (user?.quota_bytes || 10 * 1024 * 1024 * 1024) / (1024 * 1024 * 1024);
@@ -48,6 +49,40 @@ export function Sidebar() {
             <span>{item.label}</span>
           </NavLink>
         ))}
+
+        {/* Sync Link */}
+        <NavLink
+          to="/sync"
+          className={({ isActive }) =>
+            cn(
+              'flex items-center gap-3 px-4 py-3 rounded-lg transition-colors',
+              isActive
+                ? 'bg-primary/10 text-primary'
+                : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+            )
+          }
+        >
+          <RefreshCw className="w-5 h-5" />
+          <span>Sync</span>
+        </NavLink>
+
+        {/* Admin Link - Only for admins */}
+        {isAdmin && (
+          <NavLink
+            to="/admin"
+            className={({ isActive }) =>
+              cn(
+                'flex items-center gap-3 px-4 py-3 rounded-lg transition-colors',
+                isActive
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+              )
+            }
+          >
+            <Shield className="w-5 h-5" />
+            <span>Admin</span>
+          </NavLink>
+        )}
       </nav>
 
       {/* Storage Info */}

@@ -33,7 +33,9 @@ export interface Share {
   file_id: string;
   share_type: 'link' | 'user';
   token?: string;
+  password?: string;
   expires_at?: string;
+  expires_in_days?: number;
   max_downloads?: number;
   download_count: number;
   allow_upload: boolean;
@@ -41,6 +43,7 @@ export interface Share {
   permission: string;
   is_active: boolean;
   created_at: string;
+  has_password?: boolean;
 }
 
 export interface UploadProgress {

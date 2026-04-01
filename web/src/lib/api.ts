@@ -171,8 +171,9 @@ export const uploadApi = {
 
 // Shares API
 export const sharesApi = {
-  list: async (): Promise<Share[]> => {
-    const response = await api.get('/shares');
+  list: async (fileId?: string): Promise<Share[]> => {
+    const params = fileId ? { file_id: fileId } : {};
+    const response = await api.get('/shares', { params });
     return response.data.shares || response.data;
   },
 
@@ -183,6 +184,60 @@ export const sharesApi = {
 
   delete: async (id: string): Promise<void> => {
     await api.delete(`/shares/${id}`);
+  },
+};
+
+// Admin API
+export const adminApi = {
+  getUsers: async (): Promise<User[]> => {
+    const response = await api.get('/admin/users');
+    return response.data.users || response.data;
+  },
+
+  createUser: async (data: Partial<User>): Promise<User> => {
+    const response = await api.post('/admin/users', data);
+    return response.data;
+  },
+
+  updateUser: async (id: string, data: Partial<User>): Promise<User> => {
+    const response = await api.put(`/admin/users/${id}`, data);
+    return response.data;
+  },
+
+  deleteUser: async (id: string): Promise<void> => {
+    await api.delete(`/admin/users/${id}`);
+  },
+
+  getStats: async () => {
+    const response = await api.get('/admin/stats');
+    return response.data;
+  },
+
+  getSystemHealth: async () => {
+    const response = await api.get('/admin/health');
+    return response.data;
+  },
+};
+
+// Sync API
+export const syncApi = {
+  getDevices: async () => {
+    const response = await api.get('/sync/devices');
+    return response.data.devices || response.data;
+  },
+
+  getSessions: async () => {
+    const response = await api.get('/sync/sessions');
+    return response.data.sessions || response.data;
+  },
+
+  revokeDevice: async (deviceId: string): Promise<void> => {
+    await api.delete(`/sync/devices/${deviceId}`);
+  },
+
+  getSyncStatus: async () => {
+    const response = await api.get('/sync/status');
+    return response.data;
   },
 };
 

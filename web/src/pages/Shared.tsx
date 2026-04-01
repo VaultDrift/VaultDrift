@@ -10,9 +10,9 @@ export function SharedPage() {
   const queryClient = useQueryClient();
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const { data: shares, isLoading } = useQuery({
+  const { data: shares, isLoading } = useQuery<Share[]>({
     queryKey: ['shares'],
-    queryFn: sharesApi.list,
+    queryFn: () => sharesApi.list(),
   });
 
   const deleteMutation = useMutation({
