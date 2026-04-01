@@ -31,7 +31,7 @@ type Config struct {
 func Open(cfg Config) (*Manager, error) {
 	// Ensure directory exists
 	dir := filepath.Dir(cfg.Path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create database directory: %w", err)
 	}
 
@@ -98,7 +98,7 @@ func (m *Manager) Transaction(ctx context.Context, fn func(*sql.Tx) error) error
 	}
 
 	if err := fn(tx); err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		return err
 	}
 

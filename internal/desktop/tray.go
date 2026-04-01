@@ -82,7 +82,7 @@ func (t *TrayMenu) onExit() {
 // openWebInterface opens the web interface in the default browser
 func (t *TrayMenu) openWebInterface() {
 	url := fmt.Sprintf("http://localhost:%d", t.app.config.Server.Port)
-	openBrowser(url)
+	_ = openBrowser(url)
 }
 
 // triggerSync triggers a sync operation
@@ -95,7 +95,7 @@ func (t *TrayMenu) triggerSync() {
 // openSettings opens the settings
 func (t *TrayMenu) openSettings() {
 	url := fmt.Sprintf("http://localhost:%d/#/settings", t.app.config.Server.Port)
-	openBrowser(url)
+	_ = openBrowser(url)
 }
 
 // showAbout shows the about dialog
@@ -103,7 +103,7 @@ func (t *TrayMenu) showAbout() {
 	// TODO: Show native about dialog
 	// For now, just open the web interface
 	url := fmt.Sprintf("http://localhost:%d", t.app.config.Server.Port)
-	openBrowser(url)
+	_ = openBrowser(url)
 }
 
 // openBrowser opens a URL in the default browser
@@ -123,7 +123,7 @@ func openBrowser(url string) error {
 		args = []string{url}
 	}
 
-	return exec.Command(cmd, args...).Start()
+	return exec.Command(cmd, args...).Start() // #nosec G204 - URL is controlled (localhost)
 }
 
 // getIcon returns the tray icon data

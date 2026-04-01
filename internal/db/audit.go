@@ -57,7 +57,7 @@ func (m *Manager) GetAuditEntries(ctx context.Context, userID *string, action, r
 	}
 
 	// Get total count
-	countQuery := "SELECT COUNT(*) FROM audit_log WHERE " + strings.Join(whereClauses, " AND ")
+	countQuery := "SELECT COUNT(*) FROM audit_log WHERE " + strings.Join(whereClauses, " AND ") // #nosec G202 - whereClauses are safe, constructed from allowed filters only
 	var total int
 	if err := m.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("failed to count audit entries: %w", err)
@@ -66,7 +66,7 @@ func (m *Manager) GetAuditEntries(ctx context.Context, userID *string, action, r
 	// Get entries
 	query := `SELECT id, user_id, action, resource_type, resource_id,
 		details, ip_address, user_agent, created_at
-	FROM audit_log WHERE ` + strings.Join(whereClauses, " AND ") +
+	FROM audit_log WHERE ` + strings.Join(whereClauses, " AND ") + // #nosec G202 - whereClauses are safe, constructed from allowed filters only
 		` ORDER BY created_at DESC LIMIT ? OFFSET ?`
 
 	args = append(args, limit, offset)

@@ -14,6 +14,7 @@ import (
 
 	"github.com/vaultdrift/vaultdrift/internal/db"
 	"github.com/vaultdrift/vaultdrift/internal/storage"
+	"github.com/vaultdrift/vaultdrift/internal/util"
 	"github.com/vaultdrift/vaultdrift/internal/vfs"
 )
 
@@ -28,7 +29,7 @@ type StreamHandler struct {
 // NewStreamHandler creates a new stream handler
 func NewStreamHandler(vfsService *vfs.VFS, database *db.Manager, store storage.Backend) *StreamHandler {
 	cacheDir := os.TempDir() + "/vaultdrift-streams"
-	os.MkdirAll(cacheDir, 0755)
+	_ = os.MkdirAll(cacheDir, 0750)
 
 	return &StreamHandler{
 		vfs:      vfsService,
@@ -87,6 +88,13 @@ func (h *StreamHandler) handleStreamInfo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Sanitize fileID to prevent path traversal
+	fileID, err := util.SanitizeFileID(fileID)
+	if err != nil {
+		http.Error(w, "Invalid file ID", http.StatusBadRequest)
+		return
+	}
+
 	// Get file from VFS
 	file, err := h.vfs.GetFile(r.Context(), fileID)
 	if err != nil {
@@ -117,9 +125,10 @@ func (h *StreamHandler) handleStreamInfo(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(info)
+	_ = json.NewEncoder(w).Encode(info)
 }
 
+// #nosec G118
 func (h *StreamHandler) handlePlaylist(w http.ResponseWriter, r *http.Request) {
 	userID := GetUserID(r)
 	if userID == "" {
@@ -130,6 +139,13 @@ func (h *StreamHandler) handlePlaylist(w http.ResponseWriter, r *http.Request) {
 	fileID := r.PathValue("fileID")
 	if fileID == "" {
 		http.Error(w, "File ID required", http.StatusBadRequest)
+		return
+	}
+
+	// Sanitize fileID to prevent path traversal
+	fileID, err := util.SanitizeFileID(fileID)
+	if err != nil {
+		http.Error(w, "Invalid file ID", http.StatusBadRequest)
 		return
 	}
 
@@ -146,10 +162,10 @@ func (h *StreamHandler) handlePlaylist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if HLS is already generated
-	playlistPath := filepath.Join(h.cacheDir, fileID, "playlist.m3u8")
+	playlistPath := filepath.Join(h.cacheDir, fileID, "playlist.m3u8") // #nosec G703 - fileID sanitized above
 
-	if _, err := os.Stat(playlistPath); os.IsNotExist(err) {
-		// Generate HLS on-demand (async)
+	if _, err := os.Stat(playlistPath); os.IsNotExist(err) { // #nosec G703
+		// Generate HLS on-demand (async) - intentionally uses Background context for independent operation
 		go h.generateHLS(context.Background(), fileID)
 		http.Error(w, "Stream not ready, generating...", http.StatusAccepted)
 		return
@@ -176,6 +192,13 @@ func (h *StreamHandler) handleSegment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sanitize fileID to prevent path traversal
+	fileID, err := util.SanitizeFileID(fileID)
+	if err != nil {
+		http.Error(w, "Invalid file ID", http.StatusBadRequest)
+		return
+	}
+
 	// Validate segment name to prevent directory traversal
 	if strings.Contains(segment, "..") || strings.Contains(segment, "/") {
 		http.Error(w, "Invalid segment", http.StatusBadRequest)
@@ -194,10 +217,10 @@ func (h *StreamHandler) handleSegment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	segmentPath := filepath.Join(h.cacheDir, fileID, segment)
+	segmentPath := filepath.Join(h.cacheDir, fileID, segment) // #nosec G703 - fileID and segment sanitized
 
 	// Check if segment exists
-	if _, err := os.Stat(segmentPath); os.IsNotExist(err) {
+	if _, err := os.Stat(segmentPath); os.IsNotExist(err) { // #nosec G703
 		http.Error(w, "Segment not found", http.StatusNotFound)
 		return
 	}
@@ -218,6 +241,13 @@ func (h *StreamHandler) handleTranscodeStatus(w http.ResponseWriter, r *http.Req
 	fileID := r.PathValue("fileID")
 	if fileID == "" {
 		http.Error(w, "File ID required", http.StatusBadRequest)
+		return
+	}
+
+	// Sanitize fileID to prevent path traversal
+	fileID, err := util.SanitizeFileID(fileID)
+	if err != nil {
+		http.Error(w, "Invalid file ID", http.StatusBadRequest)
 		return
 	}
 
@@ -244,7 +274,7 @@ func (h *StreamHandler) handleTranscodeStatus(w http.ResponseWriter, r *http.Req
 		Qualities: []string{},
 	}
 
-	if info, err := os.Stat(playlistPath); err == nil {
+	if info, err := os.Stat(playlistPath); err == nil { // #nosec G703 - playlistPath uses sanitized fileID
 		status.Ready = true
 		status.CreatedAt = info.ModTime()
 		status.Progress = 100
@@ -252,22 +282,28 @@ func (h *StreamHandler) handleTranscodeStatus(w http.ResponseWriter, r *http.Req
 		// Detect available qualities
 		qualities := []string{"480p", "720p", "1080p"}
 		for _, q := range qualities {
-			variantPath := filepath.Join(outputDir, fmt.Sprintf("%s_%s.m3u8", fileID, q))
-			if _, err := os.Stat(variantPath); err == nil {
+			variantPath := filepath.Join(outputDir, fmt.Sprintf("%s_%s.m3u8", fileID, q)) // #nosec G703
+			if _, err := os.Stat(variantPath); err == nil { // #nosec G703
 				status.Qualities = append(status.Qualities, q)
 			}
 		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(status)
+	_ = json.NewEncoder(w).Encode(status)
 }
 
 // generateHLS generates HLS segments from video file
 func (h *StreamHandler) generateHLS(ctx context.Context, fileID string) error {
+	// Sanitize fileID to prevent path traversal
+	fileID, err := util.SanitizeFileID(fileID)
+	if err != nil {
+		return err
+	}
+
 	// Create output directory
-	outputDir := filepath.Join(h.cacheDir, fileID)
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
+	outputDir := filepath.Join(h.cacheDir, fileID) // #nosec G703 - fileID sanitized above
+	if err := os.MkdirAll(outputDir, 0750); err != nil { // #nosec G703
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
@@ -311,7 +347,7 @@ func (h *StreamHandler) generateHLS(ctx context.Context, fileID string) error {
 		variantPlaylist := fmt.Sprintf("%s_%s.m3u8", fileID, q.name)
 		variantPath := filepath.Join(outputDir, variantPlaylist)
 
-		cmd := exec.CommandContext(ctx, "ffmpeg",
+		cmd := exec.CommandContext(ctx, "ffmpeg", // #nosec G204 G702 - fileID sanitized, tempFile is system-generated
 			"-i", tempFile,
 			"-vf", fmt.Sprintf("scale=w=%d:h=%d:force_original_aspect_ratio=decrease", q.width, q.height),
 			"-c:a", "aac",
@@ -347,8 +383,8 @@ func (h *StreamHandler) generateHLS(ctx context.Context, fileID string) error {
 		masterPlaylist += v + "\n"
 	}
 
-	masterPath := filepath.Join(outputDir, "playlist.m3u8")
-	if err := os.WriteFile(masterPath, []byte(masterPlaylist), 0644); err != nil {
+	masterPath := filepath.Join(outputDir, "playlist.m3u8") // #nosec G703 - outputDir uses sanitized fileID
+	if err := os.WriteFile(masterPath, []byte(masterPlaylist), 0600); err != nil { // #nosec G703
 		return fmt.Errorf("failed to write master playlist: %w", err)
 	}
 
@@ -357,7 +393,7 @@ func (h *StreamHandler) generateHLS(ctx context.Context, fileID string) error {
 
 // assembleFile assembles chunks into a single file
 func (h *StreamHandler) assembleFile(ctx context.Context, manifest *db.Manifest, outputPath string) error {
-	f, err := os.Create(outputPath)
+	f, err := os.Create(outputPath) // #nosec G304 G703 - outputPath constructed from sanitized fileID
 	if err != nil {
 		return err
 	}
@@ -400,7 +436,7 @@ func (h *StreamHandler) probeVideo(ctx context.Context, fileID string) (*StreamI
 	}
 	defer os.Remove(tempFile)
 
-	cmd := exec.CommandContext(ctx, "ffprobe",
+	cmd := exec.CommandContext(ctx, "ffprobe", // #nosec G204 G702 - fileID sanitized, tempFile is system-generated
 		"-v", "error",
 		"-show_entries", "format=duration,bit_rate",
 		"-show_entries", "stream=width,height,codec_name,r_frame_rate",
@@ -451,8 +487,8 @@ func (h *StreamHandler) probeVideo(ctx context.Context, fileID string) (*StreamI
 		}
 	}
 
-	playlistPath := filepath.Join(h.cacheDir, fileID, "playlist.m3u8")
-	if _, err := os.Stat(playlistPath); err == nil {
+	playlistPath := filepath.Join(h.cacheDir, fileID, "playlist.m3u8") // #nosec G703 - fileID sanitized in callers
+	if _, err := os.Stat(playlistPath); err == nil { // #nosec G703
 		info.HasHLS = true
 	}
 
@@ -480,7 +516,7 @@ func (h *StreamHandler) CleanupOldStreams(maxAge time.Duration) error {
 
 		if info.ModTime().Before(cutoff) {
 			dirPath := filepath.Join(h.cacheDir, entry.Name())
-			os.RemoveAll(dirPath)
+			_ = os.RemoveAll(dirPath)
 		}
 	}
 

@@ -334,16 +334,16 @@ func insert11Bits(data []byte, bitPos int, val int) {
 	if bytePos < len(data) {
 		mask := byte(0xFF << (8 - bitOffset))
 		data[bytePos] &= ^mask
-		data[bytePos] |= byte(val >> (3 + bitOffset))
+		data[bytePos] |= byte(val >> (3 + bitOffset)) // #nosec G115 - val is 11-bit max (0-2047)
 	}
 
 	// Middle byte
 	if bytePos+1 < len(data) {
 		shift := 3 + bitOffset - 8
 		if shift >= 0 {
-			data[bytePos+1] = byte(val >> shift)
+			data[bytePos+1] = byte(val >> shift) // #nosec G115 - val is 11-bit max
 		} else {
-			data[bytePos+1] = byte(val << (-shift))
+			data[bytePos+1] = byte(val << (-shift)) // #nosec G115 - val is 11-bit max, shift bounded
 		}
 	}
 
@@ -353,7 +353,7 @@ func insert11Bits(data []byte, bitPos int, val int) {
 		if shift < 0 {
 			mask := byte(0xFF >> (8 + shift))
 			data[bytePos+2] &= mask
-			data[bytePos+2] |= byte(val << (-shift))
+			data[bytePos+2] |= byte(val << (-shift)) // #nosec G115 - val is 11-bit max, shift bounded
 		}
 	}
 }

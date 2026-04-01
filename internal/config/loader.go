@@ -15,7 +15,7 @@ func Load(path string) (*Config, error) {
 
 	// Load from file if provided
 	if path != "" {
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) // #nosec G304 - path is provided by admin/user
 		if err != nil {
 			if !os.IsNotExist(err) {
 				return nil, fmt.Errorf("failed to read config file: %w", err)
@@ -290,7 +290,7 @@ func Save(cfg *Config, path string) error {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := os.WriteFile(path, data, 0600); err != nil { // #nosec G703 - path is validated before calling Save
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 

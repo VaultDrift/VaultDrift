@@ -29,7 +29,7 @@ func main() {
 	flag.Parse()
 
 	// Ensure data directory exists
-	if err := os.MkdirAll(*dataDir, 0755); err != nil {
+	if err := os.MkdirAll(*dataDir, 0750); err != nil {
 		log.Fatalf("Failed to create data directory: %v", err)
 	}
 

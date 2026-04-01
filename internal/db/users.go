@@ -236,7 +236,7 @@ func (m *Manager) UpdateUser(ctx context.Context, id string, updates map[string]
 	args = append(args, time.Now().UTC().Format(time.RFC3339))
 	args = append(args, id)
 
-	query := fmt.Sprintf("UPDATE users SET %s, updated_at = ? WHERE id = ?",
+	query := fmt.Sprintf("UPDATE users SET %s, updated_at = ? WHERE id = ?", // #nosec G201 G202 - setClauses are safe, constructed from allowed fields only
 		strings.Join(setClauses, ", "))
 
 	result, err := m.db.ExecContext(ctx, query, args...)
@@ -301,7 +301,7 @@ func (m *Manager) ListUsers(ctx context.Context, offset, limit int, filter UserF
 		quota_bytes, used_bytes, totp_secret, totp_enabled,
 		public_key, encrypted_private_key, recovery_key_hash,
 		avatar_chunk_hash, status, last_login_at, created_at, updated_at
-	FROM users WHERE ` + strings.Join(whereClauses, " AND ") +
+	FROM users WHERE ` + strings.Join(whereClauses, " AND ") + // #nosec G202 - whereClauses are safe, constructed from allowed filters only
 		` ORDER BY created_at DESC LIMIT ? OFFSET ?`
 
 	args = append(args, limit, offset)

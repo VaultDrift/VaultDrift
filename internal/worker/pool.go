@@ -235,7 +235,7 @@ func (p *WorkerPool) processJob(job Job) {
 		job.Retries++
 		log.Printf("Job %s failed, retrying (%d/%d): %v", job.ID, job.Retries, job.MaxRetries, err)
 		time.Sleep(time.Second * time.Duration(job.Retries))
-		p.queue.Push(job)
+		_ = p.queue.Push(job)
 		return
 	}
 
@@ -335,7 +335,7 @@ func (s *Scheduler) checkAndRunTasks() {
 	now := time.Now()
 	for name, task := range tasks {
 		if now.Sub(task.lastRun) >= task.interval {
-			s.pool.Submit(Job{
+			_ = s.pool.Submit(Job{
 				ID:       fmt.Sprintf("scheduled-%s-%d", name, now.Unix()),
 				Type:     task.jobType,
 				Payload:  task.payload,

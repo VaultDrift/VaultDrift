@@ -46,12 +46,13 @@ func GenerateUUIDv7() (string, error) {
 	}
 
 	// Encode timestamp (48 bits) in big-endian manually
-	uuid[0] = byte(timestamp >> 40)
-	uuid[1] = byte(timestamp >> 32)
-	uuid[2] = byte(timestamp >> 24)
-	uuid[3] = byte(timestamp >> 16)
-	uuid[4] = byte(timestamp >> 8)
-	uuid[5] = byte(timestamp)
+	// #nosec G115 - Intentional byte extraction from 48-bit timestamp
+	uuid[0] = byte(timestamp >> 40) // #nosec G115
+	uuid[1] = byte(timestamp >> 32) // #nosec G115
+	uuid[2] = byte(timestamp >> 24) // #nosec G115
+	uuid[3] = byte(timestamp >> 16) // #nosec G115
+	uuid[4] = byte(timestamp >> 8)  // #nosec G115
+	uuid[5] = byte(timestamp)       // #nosec G115
 
 	// Set version (4 bits) to 0b0111 (7)
 	uuid[6] = (uuid[6] & 0x0F) | 0x70
@@ -210,4 +211,20 @@ func SecureRandomInt(max int) (int, error) {
 		return 0, err
 	}
 	return int(binary.BigEndian.Uint32(b)) % max, nil
+}
+
+// SanitizeFileID validates and sanitizes a file ID for safe use in file paths.
+// It returns the fileID if valid, or an error if the ID contains path traversal characters.
+func SanitizeFileID(fileID string) (string, error) {
+	// Check for path traversal attempts
+	if fileID == "" || fileID == "." || fileID == ".." {
+		return "", fmt.Errorf("invalid file ID")
+	}
+	// Check for path separators or parent directory references
+	for _, c := range fileID {
+		if c == '/' || c == '\\' || c == 0 {
+			return "", fmt.Errorf("invalid file ID: contains path separator")
+		}
+	}
+	return fileID, nil
 }

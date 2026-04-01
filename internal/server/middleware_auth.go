@@ -188,7 +188,7 @@ func (am *AuthMiddleware) setAPIUserContext(ctx context.Context, userID, usernam
 func (am *AuthMiddleware) writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	w.Write([]byte(`{"error":"` + message + `"}`))
+	_, _ = w.Write([]byte(`{"error":"` + message + `"}`))
 }
 
 // GetUserIDFromRequest extracts the user ID from the request context.

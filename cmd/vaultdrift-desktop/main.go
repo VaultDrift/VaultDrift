@@ -68,10 +68,10 @@ func loadConfig(configPath, dataDir string, port int) (*config.Config, error) {
 	}
 
 	// Ensure directories exist
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	if err := os.MkdirAll(dataDir, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
-	if err := os.MkdirAll(cfg.Storage.Local.DataDir, 0755); err != nil {
+	if err := os.MkdirAll(cfg.Storage.Local.DataDir, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create storage directory: %w", err)
 	}
 

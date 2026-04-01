@@ -139,13 +139,13 @@ func InteractiveSetup() (*Config, error) {
 	cfg.Logging.File = filepath.Join(dataDir, "logs", "vaultdrift.log")
 
 	// Ensure directories exist
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	if err := os.MkdirAll(dataDir, 0750); err != nil { // #nosec G703 - dataDir from user input in setup
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Join(dataDir, "logs"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dataDir, "logs"), 0750); err != nil { // #nosec G703
 		return nil, fmt.Errorf("failed to create logs directory: %w", err)
 	}
-	if err := os.MkdirAll(cfg.Storage.Local.DataDir, 0755); err != nil {
+	if err := os.MkdirAll(cfg.Storage.Local.DataDir, 0750); err != nil { // #nosec G703
 		return nil, fmt.Errorf("failed to create storage directory: %w", err)
 	}
 

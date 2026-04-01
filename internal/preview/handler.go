@@ -11,6 +11,7 @@ import (
 
 	"github.com/vaultdrift/vaultdrift/internal/db"
 	"github.com/vaultdrift/vaultdrift/internal/storage"
+	"github.com/vaultdrift/vaultdrift/internal/util"
 	"github.com/vaultdrift/vaultdrift/internal/vfs"
 )
 
@@ -63,6 +64,13 @@ func (h *Handler) handlePreviewInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sanitize fileID to prevent path traversal
+	fileID, err := util.SanitizeFileID(fileID)
+	if err != nil {
+		http.Error(w, "Invalid file ID", http.StatusBadRequest)
+		return
+	}
+
 	// Get file metadata
 	file, err := h.vfs.GetFile(r.Context(), fileID)
 	if err != nil {
@@ -84,8 +92,8 @@ func (h *Handler) handlePreviewInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if preview already exists
-	previewPath := filepath.Join(h.converter.cacheDir, fileID+".pdf")
-	if _, err := os.Stat(previewPath); err == nil {
+	previewPath := filepath.Join(h.converter.cacheDir, fileID+".pdf") // #nosec G703 - fileID sanitized above
+	if _, err := os.Stat(previewPath); err == nil { // #nosec G703
 		info.Status = "ready"
 		info.PreviewType = "pdf"
 	} else if h.converter.CanPreview(file.MimeType) {
@@ -95,7 +103,7 @@ func (h *Handler) handlePreviewInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(info)
+	_ = json.NewEncoder(w).Encode(info)
 }
 
 func (h *Handler) handlePreviewPDF(w http.ResponseWriter, r *http.Request) {
@@ -108,6 +116,13 @@ func (h *Handler) handlePreviewPDF(w http.ResponseWriter, r *http.Request) {
 	fileID := r.PathValue("fileID")
 	if fileID == "" {
 		http.Error(w, "File ID required", http.StatusBadRequest)
+		return
+	}
+
+	// Sanitize fileID to prevent path traversal
+	fileID, err := util.SanitizeFileID(fileID)
+	if err != nil {
+		http.Error(w, "Invalid file ID", http.StatusBadRequest)
 		return
 	}
 
@@ -161,6 +176,13 @@ func (h *Handler) handlePreviewHTML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sanitize fileID to prevent path traversal
+	fileID, err := util.SanitizeFileID(fileID)
+	if err != nil {
+		http.Error(w, "Invalid file ID", http.StatusBadRequest)
+		return
+	}
+
 	// Get file metadata
 	file, err := h.vfs.GetFile(r.Context(), fileID)
 	if err != nil {
@@ -200,6 +222,13 @@ func (h *Handler) handleGeneratePreview(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Sanitize fileID to prevent path traversal
+	fileID, err := util.SanitizeFileID(fileID)
+	if err != nil {
+		http.Error(w, "Invalid file ID", http.StatusBadRequest)
+		return
+	}
+
 	// Get file metadata
 	file, err := h.vfs.GetFile(r.Context(), fileID)
 	if err != nil {
@@ -219,15 +248,15 @@ func (h *Handler) handleGeneratePreview(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Generate preview (async)
-	go func() {
+	// Generate preview (async) - intentionally uses Background context for independent operation
+	go func() { // #nosec G118
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		h.converter.GeneratePreview(ctx, fileID)
+		_, _ = h.converter.GeneratePreview(ctx, fileID)
 	}()
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"status":  "generating",
 		"file_id": fileID,
 	})
@@ -263,7 +292,7 @@ func (h *Handler) streamFile(w http.ResponseWriter, r *http.Request, fileID stri
 		if err != nil {
 			return
 		}
-		w.Write(data)
+		_, _ = w.Write(data) // #nosec G705 - data is from verified chunk hash, binary content
 	}
 }
 

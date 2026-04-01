@@ -131,7 +131,7 @@ func (c *Client) GetObject(ctx context.Context, objectKey string) (io.ReadCloser
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, 0, fmt.Errorf("get object failed: %s", resp.Status)
 	}
 

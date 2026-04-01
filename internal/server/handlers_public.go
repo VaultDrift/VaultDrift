@@ -65,7 +65,7 @@ func (h *PublicShareHandler) getShareInfo(w http.ResponseWriter, r *http.Request
 	}
 
 	// Increment view count
-	h.db.IncrementShareViewCount(r.Context(), share.ID)
+	_ = h.db.IncrementShareViewCount(r.Context(), share.ID)
 
 	resp := shareInfoResponse{
 		FileName:    file.Name,
@@ -79,7 +79,7 @@ func (h *PublicShareHandler) getShareInfo(w http.ResponseWriter, r *http.Request
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // downloadSharedFile handles file download via share token.
@@ -243,7 +243,7 @@ func (h *PublicShareHandler) handleFullDownload(w http.ResponseWriter, r *http.R
 func (h *PublicShareHandler) handleRangeRequest(w http.ResponseWriter, r *http.Request, file *db.File, manifest *db.Manifest, rangeHeader string) {
 	// Simple range parsing
 	var start, end int64
-	fmt.Sscanf(rangeHeader, "bytes=%d-%d", &start, &end)
+	_, _ = fmt.Sscanf(rangeHeader, "bytes=%d-%d", &start, &end)
 
 	if end == 0 || end >= file.SizeBytes {
 		end = file.SizeBytes - 1
@@ -267,7 +267,7 @@ func (h *PublicShareHandler) streamContent(ctx context.Context, manifest *db.Man
 		if err != nil {
 			return
 		}
-		w.Write(data)
+		_, _ = w.Write(data)
 	}
 }
 
@@ -303,7 +303,7 @@ func (h *PublicShareHandler) streamRange(ctx context.Context, manifest *db.Manif
 		}
 
 		slice := data[sliceStart:sliceEnd]
-		w.Write(slice)
+		_, _ = w.Write(slice)
 
 		bytesWritten += int64(len(slice))
 		if bytesWritten >= targetBytes {

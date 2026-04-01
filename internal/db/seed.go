@@ -133,7 +133,8 @@ func (m *Manager) seed() error {
 	}
 
 	// Seed default admin user (password: admin)
-	// Pre-computed PHC hash for "admin"
+	// Pre-computed PHC hash for "admin" - only used for initial setup
+	// #nosec G101 - This is an intentional hardcoded hash for seeding the default admin user
 	adminPasswordHash := "$argon2id$v=19$m=65536,t=3,p=1$6IOdsT/ZB3Yc39wdhST32A$0psObWN9M9SCF1zLWMsE9lef9JFfK2pqsY1o2M3x2zg"
 
 	adminID, _ := util.GenerateUUIDv7()

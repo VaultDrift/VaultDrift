@@ -57,7 +57,7 @@ func NewGenerator(store storage.Backend, cacheDir string) *Generator {
 func (g *Generator) Init() error {
 	for _, size := range AllSizes {
 		dir := filepath.Join(g.cacheDir, size.Name)
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0750); err != nil {
 			return fmt.Errorf("failed to create thumbnail dir %s: %w", dir, err)
 		}
 	}
@@ -171,7 +171,7 @@ func (g *Generator) resizeImage(src image.Image, maxWidth, maxHeight int) image.
 
 // saveThumbnail saves a thumbnail to disk
 func (g *Generator) saveThumbnail(img image.Image, path string, format string) error {
-	file, err := os.Create(path)
+	file, err := os.Create(path) // #nosec G304 - path constructed from sanitized fileID
 	if err != nil {
 		return err
 	}

@@ -33,9 +33,12 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(wrapped, r)
 
 		duration := time.Since(start)
-		log.Printf("%s %s %s %d %s",
+		// Sanitize path to prevent log injection
+		path := strings.ReplaceAll(r.URL.Path, "\n", "")
+		path = strings.ReplaceAll(path, "\r", "")
+		log.Printf("%s %s %s %d %s", // #nosec G706 - path is sanitized above
 			r.Method,
-			r.URL.Path,
+			path,
 			r.RemoteAddr,
 			wrapped.statusCode,
 			duration,

@@ -42,7 +42,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	// Initialize storage backend
 	store, err := storage.NewBackend(cfg.Storage)
 	if err != nil {
-		database.Close()
+		_ = database.Close()
 		cancel()
 		return nil, fmt.Errorf("failed to initialize storage: %w", err)
 	}
@@ -136,11 +136,11 @@ func (a *App) cleanup() {
 	if a.server != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5)
 		defer cancel()
-		a.server.Stop(ctx)
+		_ = a.server.Stop(ctx)
 	}
 
 	if a.db != nil {
-		a.db.Close()
+		_ = a.db.Close()
 	}
 }
 

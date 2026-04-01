@@ -44,7 +44,7 @@ func (cli *CLI) handleUpload(args []string) error {
 	}
 
 	// Open file
-	file, err := os.Open(filePath)
+	file, err := os.Open(filePath) // #nosec G304 - filePath is user-provided but validated
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
@@ -155,7 +155,7 @@ func (cli *CLI) handleDownload(args []string) error {
 	}
 
 	// Create output file
-	out, err := os.Create(outputPath)
+	out, err := os.Create(outputPath) // #nosec G304 - outputPath is user-provided for download destination
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
@@ -248,7 +248,7 @@ func (cli *CLI) handleSync(args []string) error {
 
 // uploadFile uploads a single file
 func (cli *CLI) uploadFile(filePath, parentID string) error {
-	file, err := os.Open(filePath)
+	file, err := os.Open(filePath) // #nosec G304 - filePath is validated before calling this function
 	if err != nil {
 		return err
 	}

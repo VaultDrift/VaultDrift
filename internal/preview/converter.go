@@ -11,6 +11,7 @@ import (
 
 	"github.com/vaultdrift/vaultdrift/internal/db"
 	"github.com/vaultdrift/vaultdrift/internal/storage"
+	"github.com/vaultdrift/vaultdrift/internal/util"
 	"github.com/vaultdrift/vaultdrift/internal/vfs"
 )
 
@@ -26,7 +27,7 @@ type DocumentConverter struct {
 // NewDocumentConverter creates a new document converter
 func NewDocumentConverter(vfsService *vfs.VFS, database *db.Manager, store storage.Backend) *DocumentConverter {
 	cacheDir := os.TempDir() + "/vaultdrift-previews"
-	os.MkdirAll(cacheDir, 0755)
+	_ = os.MkdirAll(cacheDir, 0750)
 
 	// Check if LibreOffice is available
 	enabled := false
@@ -99,6 +100,12 @@ func (c *DocumentConverter) GeneratePreview(ctx context.Context, fileID string) 
 		return nil, fmt.Errorf("document conversion not available - install LibreOffice")
 	}
 
+	// Sanitize fileID to prevent path traversal
+	fileID, err := util.SanitizeFileID(fileID)
+	if err != nil {
+		return nil, err
+	}
+
 	// Get file metadata
 	file, err := c.vfs.GetFile(ctx, fileID)
 	if err != nil {
@@ -110,8 +117,8 @@ func (c *DocumentConverter) GeneratePreview(ctx context.Context, fileID string) 
 	}
 
 	// Check if preview already exists
-	previewPath := filepath.Join(c.cacheDir, fileID+".pdf")
-	if info, err := os.Stat(previewPath); err == nil {
+	previewPath := filepath.Join(c.cacheDir, fileID+".pdf") // #nosec G703 - fileID sanitized at start
+	if info, err := os.Stat(previewPath); err == nil { // #nosec G703
 		return &PreviewResult{
 			FileID:      fileID,
 			PreviewPath: previewPath,
@@ -131,15 +138,15 @@ func (c *DocumentConverter) GeneratePreview(ctx context.Context, fileID string) 
 	}
 
 	// Assemble file to temp location
-	tempFile := filepath.Join(os.TempDir(), fmt.Sprintf("vaultdrift-doc-%s.tmp", fileID))
+	tempFile := filepath.Join(os.TempDir(), fmt.Sprintf("vaultdrift-doc-%s.tmp", fileID)) // #nosec G703 - fileID sanitized
 	if err := c.assembleFile(ctx, manifest, tempFile); err != nil {
 		return nil, fmt.Errorf("failed to assemble file: %w", err)
 	}
 	defer os.Remove(tempFile)
 
 	// Convert to PDF using LibreOffice
-	outputDir := filepath.Join(c.cacheDir, fileID+"_work")
-	os.MkdirAll(outputDir, 0755)
+	outputDir := filepath.Join(c.cacheDir, fileID+"_work") // #nosec G703 - fileID sanitized
+	_ = os.MkdirAll(outputDir, 0750) // #nosec G703
 	defer os.RemoveAll(outputDir)
 
 	sofficePath, _ := exec.LookPath("soffice")
@@ -147,7 +154,7 @@ func (c *DocumentConverter) GeneratePreview(ctx context.Context, fileID string) 
 		sofficePath, _ = exec.LookPath("libreoffice")
 	}
 
-	cmd := exec.CommandContext(ctx, sofficePath,
+	cmd := exec.CommandContext(ctx, sofficePath, // #nosec G204 G702 - fileID sanitized, tempFile/outputDir system-generated
 		"--headless",
 		"--convert-to", "pdf",
 		"--outdir", outputDir,
@@ -165,7 +172,7 @@ func (c *DocumentConverter) GeneratePreview(ctx context.Context, fileID string) 
 	generatedPDF := filepath.Join(outputDir, baseName+".pdf")
 
 	// Move to cache location
-	if err := os.Rename(generatedPDF, previewPath); err != nil {
+	if err := os.Rename(generatedPDF, previewPath); err != nil { // #nosec G703 - previewPath uses sanitized fileID
 		return nil, fmt.Errorf("failed to move preview: %w", err)
 	}
 
@@ -183,6 +190,12 @@ func (c *DocumentConverter) GenerateHTML(ctx context.Context, fileID string) (st
 		return "", fmt.Errorf("document conversion not available")
 	}
 
+	// Sanitize fileID to prevent path traversal
+	fileID, err := util.SanitizeFileID(fileID)
+	if err != nil {
+		return "", err
+	}
+
 	// First generate PDF
 	result, err := c.GeneratePreview(ctx, fileID)
 	if err != nil {
@@ -190,11 +203,11 @@ func (c *DocumentConverter) GenerateHTML(ctx context.Context, fileID string) (st
 	}
 
 	// Convert PDF to HTML using pdftotext or pdf2html
-	htmlPath := filepath.Join(c.cacheDir, fileID+".html")
+	htmlPath := filepath.Join(c.cacheDir, fileID+".html") // #nosec G703 - fileID sanitized at start
 
 	// Check if pdftotext is available
 	if _, err := exec.LookPath("pdftotext"); err == nil {
-		cmd := exec.CommandContext(ctx, "pdftotext",
+		cmd := exec.CommandContext(ctx, "pdftotext", // #nosec G204 G702 - fileID sanitized, paths controlled
 			"-htmlmeta",
 			result.PreviewPath,
 			htmlPath,
@@ -227,17 +240,23 @@ func (c *DocumentConverter) generateSimpleHTML(fileID, pdfPath string) string {
 </body>
 </html>`, fileID)
 
-	htmlPath := filepath.Join(c.cacheDir, fileID+".html")
-	os.WriteFile(htmlPath, []byte(htmlContent), 0644)
+	htmlPath := filepath.Join(c.cacheDir, fileID+".html") // #nosec G703 - fileID sanitized in caller
+	_ = os.WriteFile(htmlPath, []byte(htmlContent), 0600) // #nosec G703
 	return htmlPath
 }
 
 // GetPreview returns the preview file path, generating if needed
 func (c *DocumentConverter) GetPreview(ctx context.Context, fileID string) (*PreviewResult, error) {
-	previewPath := filepath.Join(c.cacheDir, fileID+".pdf")
+	// Sanitize fileID to prevent path traversal
+	fileID, err := util.SanitizeFileID(fileID)
+	if err != nil {
+		return nil, err
+	}
+
+	previewPath := filepath.Join(c.cacheDir, fileID+".pdf") // #nosec G703 - fileID sanitized above
 
 	// Check cache
-	if info, err := os.Stat(previewPath); err == nil {
+	if info, err := os.Stat(previewPath); err == nil { // #nosec G703
 		return &PreviewResult{
 			FileID:      fileID,
 			PreviewPath: previewPath,
@@ -270,7 +289,7 @@ func (c *DocumentConverter) CleanupOldPreviews(maxAge time.Duration) error {
 		}
 
 		if info.ModTime().Before(cutoff) {
-			os.Remove(filepath.Join(c.cacheDir, entry.Name()))
+			_ = os.Remove(filepath.Join(c.cacheDir, entry.Name()))
 		}
 	}
 
@@ -279,7 +298,7 @@ func (c *DocumentConverter) CleanupOldPreviews(maxAge time.Duration) error {
 
 // assembleFile assembles chunks into a single file
 func (c *DocumentConverter) assembleFile(ctx context.Context, manifest *db.Manifest, outputPath string) error {
-	f, err := os.Create(outputPath)
+	f, err := os.Create(outputPath) // #nosec G304 G703 - outputPath constructed from sanitized fileID
 	if err != nil {
 		return err
 	}

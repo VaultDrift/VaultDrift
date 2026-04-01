@@ -24,7 +24,7 @@ func NewLocalBackend(cfg config.LocalConfig) (*LocalBackend, error) {
 	}
 
 	// Ensure data directory exists
-	if err := os.MkdirAll(cfg.DataDir, 0755); err != nil {
+	if err := os.MkdirAll(cfg.DataDir, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
 
@@ -48,19 +48,19 @@ func (b *LocalBackend) Put(ctx context.Context, key string, data []byte) error {
 
 	// Ensure parent directory exists
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
 	// Write to temp file
 	tempPath := path + ".tmp"
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
+	if err := os.WriteFile(tempPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write temp file: %w", err)
 	}
 
 	// Atomic rename
 	if err := os.Rename(tempPath, path); err != nil {
-		os.Remove(tempPath) // Cleanup on error
+		_ = os.Remove(tempPath) // Cleanup on error
 		return fmt.Errorf("failed to rename file: %w", err)
 	}
 
@@ -71,7 +71,7 @@ func (b *LocalBackend) Put(ctx context.Context, key string, data []byte) error {
 func (b *LocalBackend) Get(ctx context.Context, key string) ([]byte, error) {
 	path := b.keyToPath(key)
 
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 - path constructed from hash key
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf("chunk not found")
@@ -95,7 +95,7 @@ func (b *LocalBackend) Delete(ctx context.Context, key string) error {
 
 	// Try to remove empty parent directory
 	dir := filepath.Dir(path)
-	os.Remove(dir) // Ignore error - directory might not be empty
+	_ = os.Remove(dir) // Ignore error - directory might not be empty
 
 	return nil
 }

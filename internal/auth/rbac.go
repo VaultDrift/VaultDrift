@@ -445,7 +445,7 @@ func (r *RBAC) UpdateRole(roleName string, permissions []Permission) error {
 // CleanupCachePeriodically runs a background goroutine to clean up expired cache entries.
 // Returns a function to stop the cleanup goroutine.
 func (r *RBAC) CleanupCachePeriodically(ctx context.Context, interval time.Duration) context.CancelFunc {
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(ctx) // #nosec G118 - cancel returned to caller for explicit cleanup
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()

@@ -305,12 +305,12 @@ func (n *EventNotifier) HandleLongPoll(w http.ResponseWriter, r *http.Request) {
 	select {
 	case event := <-sub.Events:
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(event)
+		_ = json.NewEncoder(w).Encode(event)
 
 	case <-ctx.Done():
 		// Timeout - return empty response
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "timeout"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "timeout"})
 	}
 }
 

@@ -329,7 +329,7 @@ func (m *Manager) updatePeerStatus(peerID, status string) {
 	// Update in database
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	m.db.UpdateFederationPeerStatus(ctx, peerID, status)
+	_ = m.db.UpdateFederationPeerStatus(ctx, peerID, status)
 }
 
 // updatePeerLastSeen updates a peer's last seen time

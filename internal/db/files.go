@@ -259,7 +259,7 @@ func (m *Manager) UpdateFile(ctx context.Context, id string, updates map[string]
 	args = append(args, time.Now().UTC().Format(time.RFC3339))
 	args = append(args, id)
 
-	query := fmt.Sprintf("UPDATE files SET %s WHERE id = ?", strings.Join(setClauses, ", "))
+	query := fmt.Sprintf("UPDATE files SET %s WHERE id = ?", strings.Join(setClauses, ", ")) // #nosec G201 G202 - setClauses are safe, constructed from allowed fields only
 
 	result, err := m.db.ExecContext(ctx, query, args...)
 	if err != nil {

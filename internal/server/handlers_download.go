@@ -575,7 +575,7 @@ func (h *DownloadHandler) downloadChunk(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 
 	w.WriteHeader(http.StatusOK)
-	w.Write(data)
+	_, _ = w.Write(data) // #nosec G705 - data is from verified chunk hash, binary content
 }
 
 // canDecrypt returns true if the handler can decrypt files.

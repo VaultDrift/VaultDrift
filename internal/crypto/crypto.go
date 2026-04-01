@@ -364,7 +364,8 @@ func (se *StreamEncryptor) EncryptChunk(plaintext []byte, chunkIndex int) []byte
 	// Use a counter-based nonce derived from the main nonce
 	chunkNonce := make([]byte, NonceSize)
 	copy(chunkNonce, se.nonce)
-	binary.BigEndian.PutUint32(chunkNonce[8:], uint32(chunkIndex))
+	// chunkIndex is bounded by file size limits (max ~4GB/chunk size)
+	binary.BigEndian.PutUint32(chunkNonce[8:], uint32(chunkIndex)) // #nosec G115 - chunkIndex is bounded
 
 	// Encrypt and return
 	return se.gcm.Seal(nil, chunkNonce, plaintext, nil)
@@ -407,7 +408,8 @@ func (sd *StreamDecryptor) DecryptChunk(ciphertext []byte, chunkIndex int) ([]by
 	// Reconstruct the nonce for this chunk
 	chunkNonce := make([]byte, NonceSize)
 	copy(chunkNonce, sd.nonce)
-	binary.BigEndian.PutUint32(chunkNonce[8:], uint32(chunkIndex))
+	// chunkIndex is bounded by file size limits (max ~4GB/chunk size)
+	binary.BigEndian.PutUint32(chunkNonce[8:], uint32(chunkIndex)) // #nosec G115 - chunkIndex is bounded
 
 	plaintext, err := sd.gcm.Open(nil, chunkNonce, ciphertext, nil)
 	if err != nil {

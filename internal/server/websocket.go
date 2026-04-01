@@ -271,9 +271,10 @@ func (s *WebSocketServer) broadcastEvent(event *WebSocketEvent) {
 		}
 
 		// Send directly to avoid channel bottleneck for broadcast
-		client.Conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_ = client.Conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		if err := client.Conn.WriteMessage(websocket.TextMessage, data); err != nil {
 			// Write failed, client will be cleaned up on next read
+			_ = err // Explicitly ignore - client cleanup handled elsewhere
 		}
 	}
 }
@@ -313,12 +314,12 @@ func (s *WebSocketServer) BroadcastFileEvent(userID, folderID, fileID, eventType
 func (c *WebSocketClient) readPump() {
 	defer func() {
 		c.Server.unregister <- c
-		c.Conn.Close()
+		_ = c.Conn.Close()
 	}()
 
-	c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	_ = c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	c.Conn.SetPongHandler(func(string) error {
-		c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		_ = c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		return nil
 	})
 
@@ -340,15 +341,15 @@ func (c *WebSocketClient) writePump() {
 	ticker := time.NewTicker(54 * time.Second)
 	defer func() {
 		ticker.Stop()
-		c.Conn.Close()
+		_ = c.Conn.Close()
 	}()
 
 	for {
 		select {
 		case message, ok := <-c.Send:
-			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			_ = c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if !ok {
-				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+				_ = c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 
@@ -362,7 +363,7 @@ func (c *WebSocketClient) writePump() {
 			}
 
 		case <-ticker.C:
-			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			_ = c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}

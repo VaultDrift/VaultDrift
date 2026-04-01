@@ -2,7 +2,7 @@ package auth
 
 import (
 	"crypto/hmac"
-	"crypto/sha1"
+	"crypto/sha1" // #nosec G505 - SHA1 required by RFC 6238 for TOTP compatibility
 	"encoding/base32"
 	"encoding/binary"
 	"fmt"
@@ -95,6 +95,10 @@ func (t *TOTP) ValidateCode(secret, code string) bool {
 func generateTOTP(secret []byte, timeStep int64) string {
 	// Encode time step as 8-byte big-endian
 	counter := make([]byte, 8)
+	// timeStep is Unix timestamp divided by 30, always positive and safe for uint64
+	if timeStep < 0 {
+		timeStep = 0
+	}
 	binary.BigEndian.PutUint64(counter, uint64(timeStep))
 
 	// HMAC-SHA1
@@ -106,7 +110,8 @@ func generateTOTP(secret []byte, timeStep int64) string {
 	offset := hash[len(hash)-1] & 0x0f
 	code := binary.BigEndian.Uint32(hash[offset : offset+4])
 	code &= 0x7fffffff // Clear most significant bit
-	code %= uint32(pow10(TOTPDigits))
+	// pow10 returns int, but TOTPDigits is max 10, so result fits in uint32
+	code %= uint32(pow10(TOTPDigits)) // #nosec G115 - TOTPDigits is bounded (6-10)
 
 	// Format as zero-padded string
 	return fmt.Sprintf("%0*d", TOTPDigits, code)

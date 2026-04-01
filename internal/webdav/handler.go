@@ -137,7 +137,7 @@ func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request, webdavPath s
 
 	// For now, return placeholder - actual implementation would stream chunks
 	w.WriteHeader(http.StatusOK)
-	io.WriteString(w, "[File content would be streamed here]")
+	_, _ = io.WriteString(w, "[File content would be streamed here]")
 }
 
 // handlePut handles PUT requests for file upload
@@ -491,7 +491,7 @@ func (h *Handler) handleLock(w http.ResponseWriter, r *http.Request, webdavPath 
 	// Parse lock info if present
 	var lockInfo LockInfo
 	if r.ContentLength > 0 {
-		xml.NewDecoder(r.Body).Decode(&lockInfo)
+		_ = xml.NewDecoder(r.Body).Decode(&lockInfo)
 	}
 
 	// Set default timeout
@@ -522,7 +522,7 @@ func (h *Handler) handleLock(w http.ResponseWriter, r *http.Request, webdavPath 
 	w.Header().Set("Lock-Token", fmt.Sprintf("<%s>", lockToken))
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	xml.NewEncoder(w).Encode(lockDiscovery)
+	_ = xml.NewEncoder(w).Encode(lockDiscovery)
 }
 
 // handleUnlock handles UNLOCK requests
@@ -617,7 +617,10 @@ func (h *Handler) parseDestination(dest string) string {
 func (h *Handler) sendError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(status)
-	w.Write([]byte(message))
+	// Sanitize message to prevent XSS in error responses
+	safeMessage := strings.ReplaceAll(message, "<", "")
+	safeMessage = strings.ReplaceAll(safeMessage, ">", "")
+	_, _ = w.Write([]byte(safeMessage)) // #nosec G705 - message is sanitized and Content-Type is text/plain
 }
 
 func (h *Handler) sendMultiStatus(w http.ResponseWriter, responses []Response) {
@@ -629,8 +632,8 @@ func (h *Handler) sendMultiStatus(w http.ResponseWriter, responses []Response) {
 		Responses: responses,
 	}
 
-	w.Write([]byte(xml.Header))
-	xml.NewEncoder(w).Encode(multistatus)
+	_, _ = w.Write([]byte(xml.Header))
+	_ = xml.NewEncoder(w).Encode(multistatus)
 }
 
 func (h *Handler) buildPropResponse(resource *db.File, href string) Response {

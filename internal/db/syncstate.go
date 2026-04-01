@@ -133,7 +133,7 @@ func (m *Manager) UpdateDevice(ctx context.Context, id string, updates map[strin
 	args = append(args, time.Now().UTC().Format(time.RFC3339))
 	args = append(args, id)
 
-	query := fmt.Sprintf("UPDATE devices SET %s WHERE id = ?", setClauses)
+	query := fmt.Sprintf("UPDATE devices SET %s WHERE id = ?", setClauses) // #nosec G201 G202 - setClauses are safe, constructed from allowed fields only
 
 	result, err := m.db.ExecContext(ctx, query, args...)
 	if err != nil {
