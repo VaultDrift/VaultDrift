@@ -6,10 +6,13 @@
 [![Go Version](https://img.shields.io/badge/go-1.23+-blue.svg)](https://golang.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-0.1.0--beta.1-orange.svg)]()
+[![Website](https://img.shields.io/badge/website-vaultdrift.com-blue.svg)](https://vaultdrift.com)
 
 ⚠️ **Beta Status**: VaultDrift is currently in beta. APIs and features may change.
 
 VaultDrift is a **secure, distributed file storage system** with end-to-end encryption, content-defined chunking, and real-time synchronization. Built in pure Go with an embedded SQLite database, it provides a complete self-hosted cloud storage solution.
+
+🌐 **Website**: [vaultdrift.com](https://vaultdrift.com)
 
 ## Philosophy: #NOFORKANYMORE
 
