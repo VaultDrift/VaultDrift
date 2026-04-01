@@ -1,0 +1,65 @@
+# VaultDrift Windows Configuration
+# Copy this file to config.yaml and customize for your setup
+
+server:
+  host: 0.0.0.0              # Listen on all interfaces (change to 127.0.0.1 for local only)
+  port: 8443                 # HTTPS port (use 8080 for HTTP without TLS)
+  base_url: https://localhost:8443
+  tls:
+    enabled: true            # Set false for HTTP (not recommended for production)
+    auto_cert: false         # Set true for Let's Encrypt (requires public domain)
+    cert_file: ./certs/cert.pem
+    key_file: ./certs/key.pem
+
+storage:
+  backend: local             # Options: local, s3
+  local:
+    data_dir: ./data         # Windows path: C:\VaultDrift\data veya ./data
+
+# CobaltDB (embedded SQLite)
+database:
+  path: ./data/vaultdrift.db
+
+auth:
+  jwt_secret: CHANGE_THIS_TO_A_RANDOM_STRING_32_CHARS_MINIMUM
+  access_token_ttl: 15m
+  refresh_token_ttl: 7d
+  totp_enabled: true
+  max_login_attempts: 5
+  lockout_duration: 15m
+
+sync:
+  chunk_size_min: 262144      # 256KB
+  chunk_size_avg: 1048576     # 1MB
+  chunk_size_max: 4194304     # 4MB
+  max_concurrent_transfers: 4
+  websocket_enabled: true
+
+encryption:
+  enabled: true
+  zero_knowledge: true
+  argon2_time: 3
+  argon2_memory: 65536        # 64MB
+  argon2_threads: 4
+
+sharing:
+  public_links_enabled: true
+  max_expiry_days: 90
+  default_expiry_days: 7
+  password_required: false
+  max_download_limit: 1000
+
+users:
+  registration_enabled: false   # Set true to allow public registration
+  default_quota: 10737418240    # 10GB (0 = unlimited)
+  max_quota: 0
+
+logging:
+  level: info                  # debug, info, warn, error
+  file: ./logs/vaultdrift.log
+  audit: true
+  format: json                 # json or text
+
+# Federation (optional - for connecting multiple servers)
+federation:
+  enabled: false
