@@ -13,7 +13,7 @@ import (
 // TestUploadFlow tests complete upload session lifecycle
 func TestUploadFlow(t *testing.T) {
 	// Create upload handler with mock VFS
-	uploadHandler := NewUploadHandler(nil)
+	uploadHandler := NewUploadHandler(nil, nil, nil)
 
 	// Test 1: Create upload session
 	t.Run("CreateUploadSession", func(t *testing.T) {
