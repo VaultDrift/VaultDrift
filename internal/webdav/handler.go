@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/vaultdrift/vaultdrift/internal/db"
+	"github.com/vaultdrift/vaultdrift/internal/storage"
 	"github.com/vaultdrift/vaultdrift/internal/vfs"
 )
 
@@ -34,15 +35,17 @@ const (
 type Handler struct {
 	vfs       *vfs.VFS
 	db        *db.Manager
+	storage   storage.Backend
 	lockStore *LockStore
 	basePath  string
 }
 
 // NewHandler creates a new WebDAV handler
-func NewHandler(vfsService *vfs.VFS, database *db.Manager, basePath string) *Handler {
+func NewHandler(vfsService *vfs.VFS, database *db.Manager, store storage.Backend, basePath string) *Handler {
 	return &Handler{
 		vfs:       vfsService,
 		db:        database,
+		storage:   store,
 		lockStore: NewLockStore(),
 		basePath:  basePath,
 	}
@@ -135,9 +138,40 @@ func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request, webdavPath s
 		}
 	}
 
-	// For now, return placeholder - actual implementation would stream chunks
+	// Get file manifest for chunk-based streaming
+	if file.ManifestID == nil || *file.ManifestID == "" {
+		h.sendError(w, http.StatusBadRequest, "File has no content")
+		return
+	}
+
+	manifest, err := h.db.GetManifest(r.Context(), *file.ManifestID)
+	if err != nil {
+		h.sendError(w, http.StatusInternalServerError, "Failed to get file manifest")
+		return
+	}
+
+	// Stream file content from chunks
 	w.WriteHeader(http.StatusOK)
-	_, _ = io.WriteString(w, "[File content would be streamed here]")
+	if err := h.streamChunks(r.Context(), manifest, w); err != nil {
+		// Error already written to response, just log
+		return
+	}
+}
+
+// streamChunks streams chunk data from storage to the response writer
+func (h *Handler) streamChunks(ctx context.Context, manifest *db.Manifest, w http.ResponseWriter) error {
+	for _, chunkHash := range manifest.Chunks {
+		data, err := h.storage.Get(ctx, chunkHash)
+		if err != nil {
+			http.Error(w, "Failed to read file data", http.StatusInternalServerError)
+			return fmt.Errorf("failed to get chunk %s: %w", chunkHash, err)
+		}
+
+		if _, err := w.Write(data); err != nil {
+			return fmt.Errorf("failed to write chunk data: %w", err)
+		}
+	}
+	return nil
 }
 
 // handlePut handles PUT requests for file upload
