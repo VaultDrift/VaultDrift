@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"sync"
@@ -556,7 +557,39 @@ func (h *UploadHandler) cancelUpload(w http.ResponseWriter, r *http.Request) {
 	delete(h.sessions, sessionID)
 	h.sessionsMutex.Unlock()
 
-	// TODO: Clean up uploaded chunks from storage
+	// Clean up uploaded chunks from storage
+	if session != nil {
+		session.ChunksMutex.RLock()
+		chunkHashes := make([]string, 0)
+		for _, hashes := range session.ChunkHashes {
+			chunkHashes = append(chunkHashes, hashes...)
+		}
+		session.ChunksMutex.RUnlock()
+
+		// Delete chunks from storage and decrement ref count
+		for _, hash := range chunkHashes {
+			// Get chunk to check ref count
+			chunk, err := h.db.GetChunk(r.Context(), hash)
+			if err != nil {
+				continue // Chunk may not exist
+			}
+
+			// Decrement ref count
+			if err := h.db.DecrementRefCount(r.Context(), hash); err != nil {
+				continue
+			}
+
+			// If ref count is 0 or 1 (will be 0 after decrement), delete from storage
+			if chunk.RefCount <= 1 {
+				if err := h.storage.Delete(r.Context(), hash); err != nil {
+					log.Printf("Failed to delete chunk from storage: %s", hash)
+				}
+				if err := h.db.DeleteChunk(r.Context(), hash); err != nil {
+					log.Printf("Failed to delete chunk from database: %s", hash)
+				}
+			}
+		}
+	}
 
 	SuccessResponse(w, map[string]string{"status": "cancelled"})
 }

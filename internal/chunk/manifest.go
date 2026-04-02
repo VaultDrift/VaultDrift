@@ -1,6 +1,8 @@
 package chunk
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -63,8 +65,8 @@ func DeserializeManifest(data []byte) (*Manifest, error) {
 // CalculateChecksum calculates the checksum of the complete file.
 // This should be called after the file is assembled.
 func (m *Manifest) CalculateChecksum(data []byte) string {
-	// This is a placeholder; actual checksum would be calculated during upload
-	return ""
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:])
 }
 
 // ChunkCount returns the number of chunks in the manifest.
