@@ -98,6 +98,11 @@ func (b *S3Backend) List(ctx context.Context, prefix string) ([]string, error) {
 	return keys, nil
 }
 
+// Type returns the storage backend type
+func (b *S3Backend) Type() string {
+	return "s3"
+}
+
 // Stats returns storage statistics.
 func (b *S3Backend) Stats(ctx context.Context) (*StorageStats, error) {
 	objects, err := b.client.ListObjectsV2(ctx, "")

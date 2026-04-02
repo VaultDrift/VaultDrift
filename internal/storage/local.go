@@ -33,6 +33,11 @@ func NewLocalBackend(cfg config.LocalConfig) (*LocalBackend, error) {
 	}, nil
 }
 
+// Type returns the storage backend type
+func (b *LocalBackend) Type() string {
+	return "local"
+}
+
 // keyToPath converts a hash key to a filesystem path.
 // Format: {dataDir}/chunks/{hash[:2]}/{hash[2:]}.chunk
 func (b *LocalBackend) keyToPath(key string) string {

@@ -53,7 +53,7 @@ func TestUploadFlow(t *testing.T) {
 		t.Logf("✅ Upload session created: %s", resp.SessionID)
 	})
 
-	// Test 2: Upload chunk
+	// Test 2: Upload chunk - will fail with 503 since no storage
 	t.Run("UploadChunk", func(t *testing.T) {
 		// Create session first
 		session := &UploadSession{
@@ -81,11 +81,12 @@ func TestUploadFlow(t *testing.T) {
 
 		uploadHandler.uploadChunk(w, req)
 
-		if w.Code != http.StatusOK && w.Code != http.StatusCreated {
-			t.Errorf("Expected 200/201, got %d: %s", w.Code, w.Body.String())
+		// Expect 503 Service Unavailable since storage/db are nil
+		if w.Code != http.StatusServiceUnavailable {
+			t.Errorf("Expected 503, got %d: %s", w.Code, w.Body.String())
 		}
 
-		t.Logf("✅ Chunk uploaded successfully")
+		t.Logf("✅ Chunk upload correctly returned 503 when storage unavailable")
 	})
 
 	// Test 3: Complete upload (without VFS - will fail but tests flow)
@@ -174,7 +175,7 @@ func TestUploadFlow(t *testing.T) {
 
 // TestUploadValidation tests input validation
 func TestUploadValidation(t *testing.T) {
-	handler := NewUploadHandler(nil)
+	handler := NewUploadHandler(nil, nil, nil)
 
 	tests := []struct {
 		name       string
@@ -223,7 +224,7 @@ func TestUploadValidation(t *testing.T) {
 
 // TestUploadAuthorization tests authorization checks
 func TestUploadAuthorization(t *testing.T) {
-	handler := NewUploadHandler(nil)
+	handler := NewUploadHandler(nil, nil, nil)
 
 	// Create a session for test-user
 	session := &UploadSession{
@@ -268,7 +269,7 @@ func TestUploadAuthorization(t *testing.T) {
 
 // TestSessionExpiration tests session expiration
 func TestSessionExpiration(t *testing.T) {
-	handler := NewUploadHandler(nil)
+	handler := NewUploadHandler(nil, nil, nil)
 
 	// Create an expired session
 	expiredSession := &UploadSession{
@@ -301,7 +302,7 @@ func TestSessionExpiration(t *testing.T) {
 
 // TestChunkUploadValidation tests chunk upload validation
 func TestChunkUploadValidation(t *testing.T) {
-	handler := NewUploadHandler(nil)
+	handler := NewUploadHandler(nil, nil, nil)
 
 	// Create session with 2 chunks expected
 	session := &UploadSession{
@@ -381,7 +382,7 @@ func TestChunkUploadValidation(t *testing.T) {
 
 // TestMissingChunks tests missing chunks calculation
 func TestMissingChunks(t *testing.T) {
-	handler := NewUploadHandler(nil)
+	handler := NewUploadHandler(nil, nil, nil)
 
 	session := &UploadSession{
 		ID:          "missing-chunks-session",

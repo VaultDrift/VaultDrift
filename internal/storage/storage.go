@@ -30,6 +30,9 @@ type Backend interface {
 
 	// Stats returns storage usage statistics.
 	Stats(ctx context.Context) (*StorageStats, error)
+
+	// Type returns the storage backend type name
+	Type() string
 }
 
 // StorageStats holds storage statistics.

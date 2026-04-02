@@ -149,6 +149,11 @@ func (b *IPFSBackend) List(ctx context.Context, prefix string) ([]string, error)
 	return []string{}, nil
 }
 
+// Type returns the storage backend type
+func (b *IPFSBackend) Type() string {
+	return "ipfs"
+}
+
 // Stats returns storage statistics from IPFS
 func (b *IPFSBackend) Stats(ctx context.Context) (*StorageStats, error) {
 	// Return basic stats - full implementation would use Repo().Stat() if available

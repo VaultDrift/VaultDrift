@@ -4,14 +4,20 @@
 package fuse
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"syscall"
+	"time"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
+	"github.com/vaultdrift/vaultdrift/internal/chunk"
 	"github.com/vaultdrift/vaultdrift/internal/db"
+	"github.com/vaultdrift/vaultdrift/internal/storage"
 	"github.com/vaultdrift/vaultdrift/internal/vfs"
 )
 
@@ -19,6 +25,8 @@ import (
 type VaultDriftFS struct {
 	vfs      *vfs.VFS
 	db       *db.Manager
+	storage  storage.Backend
+	chunker  *chunk.Chunker
 	userID   string
 	uid      uint32
 	gid      uint32
@@ -30,6 +38,8 @@ type DirNode struct {
 	fs.Inode
 	vfs      *vfs.VFS
 	db       *db.Manager
+	storage  storage.Backend
+	chunker  *chunk.Chunker
 	userID   string
 	folderID string
 }
@@ -37,12 +47,14 @@ type DirNode struct {
 // FileNode represents a file in the filesystem
 type FileNode struct {
 	fs.Inode
-	vfs    *vfs.VFS
-	db     *db.Manager
-	userID string
-	fileID string
-	size   uint64
-	mode   uint32
+	vfs      *vfs.VFS
+	db       *db.Manager
+	storage  storage.Backend
+	chunker  *chunk.Chunker
+	userID   string
+	fileID   string
+	size     uint64
+	mode     uint32
 }
 
 // FileHandle represents an open file
@@ -69,13 +81,16 @@ var (
 )
 
 // NewVaultDriftFS creates a new FUSE filesystem
-func NewVaultDriftFS(vfsService *vfs.VFS, database *db.Manager, userID string) *VaultDriftFS {
+func NewVaultDriftFS(vfsService *vfs.VFS, database *db.Manager, store storage.Backend, userID string) *VaultDriftFS {
 	uid := uint32(os.Getuid())
 	gid := uint32(os.Getgid())
+	chk := chunk.DefaultChunker()
 
 	root := &DirNode{
 		vfs:      vfsService,
 		db:       database,
+		storage:  store,
+		chunker:  chk,
 		userID:   userID,
 		folderID: "", // Root folder
 	}
@@ -83,6 +98,8 @@ func NewVaultDriftFS(vfsService *vfs.VFS, database *db.Manager, userID string) *
 	return &VaultDriftFS{
 		vfs:      vfsService,
 		db:       database,
+		storage:  store,
+		chunker:  chk,
 		userID:   userID,
 		uid:      uid,
 		gid:      gid,
@@ -139,6 +156,8 @@ func (n *DirNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (
 			child := &DirNode{
 				vfs:      n.vfs,
 				db:       n.db,
+				storage:  n.storage,
+				chunker:  n.chunker,
 				userID:   n.userID,
 				folderID: entry.ID,
 			}
@@ -147,12 +166,14 @@ func (n *DirNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (
 		}
 
 		child := &FileNode{
-			vfs:    n.vfs,
-			db:     n.db,
-			userID: n.userID,
-			fileID: entry.ID,
-			size:   uint64(entry.SizeBytes),
-			mode:   uint32(fuse.S_IFREG | 0644),
+			vfs:     n.vfs,
+			db:      n.db,
+			storage: n.storage,
+			chunker: n.chunker,
+			userID:  n.userID,
+			fileID:  entry.ID,
+			size:    uint64(entry.SizeBytes),
+			mode:    uint32(fuse.S_IFREG | 0644),
 		}
 		out.Mode = child.mode
 		out.Size = child.size
@@ -211,6 +232,8 @@ func (n *DirNode) Mkdir(ctx context.Context, name string, mode uint32, out *fuse
 	child := &DirNode{
 		vfs:      n.vfs,
 		db:       n.db,
+		storage:  n.storage,
+		chunker:  n.chunker,
 		userID:   n.userID,
 		folderID: folderID,
 	}
@@ -228,12 +251,14 @@ func (n *DirNode) Create(ctx context.Context, name string, flags uint32, mode ui
 	}
 
 	child := &FileNode{
-		vfs:    n.vfs,
-		db:     n.db,
-		userID: n.userID,
-		fileID: file.ID,
-		size:   0,
-		mode:   uint32(fuse.S_IFREG | 0644),
+		vfs:     n.vfs,
+		db:      n.db,
+		storage: n.storage,
+		chunker: n.chunker,
+		userID:  n.userID,
+		fileID:  file.ID,
+		size:    0,
+		mode:    uint32(fuse.S_IFREG | 0644),
 	}
 
 	out.Mode = child.mode
@@ -396,19 +421,134 @@ func (n *FileNode) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAt
 
 // Release is called when the file is closed
 func (fh *FileHandle) Release(ctx context.Context) syscall.Errno {
-	// Note: Full implementation would write data back to VFS
+	// If data was modified, write it back to storage
+	if fh.dirty && len(fh.data) > 0 {
+		// Get the file to update
+		file, err := fh.node.vfs.GetFile(ctx, fh.node.fileID)
+		if err != nil {
+			return syscall.EIO
+		}
+
+		// Update file size
+		if err := fh.node.db.UpdateFile(ctx, file.ID, map[string]any{
+			"size_bytes": int64(len(fh.data)),
+		}); err != nil {
+			return syscall.EIO
+		}
+
+		// Create new manifest with chunks for the updated data
+		if err := fh.createManifestAndStoreChunks(ctx, file.ID); err != nil {
+			return syscall.EIO
+		}
+	}
+
 	fh.dirty = false
+	fh.data = nil // Free memory
 	return fs.OK
 }
 
+// createManifestAndStoreChunks chunks data with CDC, stores chunks, and creates manifest
+func (fh *FileHandle) createManifestAndStoreChunks(ctx context.Context, fileID string) error {
+	// Skip if no storage or chunker
+	if fh.node.storage == nil || fh.node.chunker == nil {
+		return nil
+	}
+
+	// Chunk data using CDC
+	cdcChunks, cdcData, err := fh.node.chunker.ChunkWithData(bytes.NewReader(fh.data))
+	if err != nil {
+		return fmt.Errorf("failed to chunk data: %w", err)
+	}
+
+	// Store chunks and collect hashes
+	chunkHashes := make([]string, 0, len(cdcChunks))
+	for i, cdcChunk := range cdcChunks {
+		chunkHashes = append(chunkHashes, cdcChunk.Hash)
+
+		// Check if chunk already exists (deduplication)
+		exists, err := fh.node.db.ChunkExists(ctx, cdcChunk.Hash)
+		if err != nil {
+			return fmt.Errorf("failed to check chunk existence: %w", err)
+		}
+
+		if exists {
+			// Chunk exists, increment reference count
+			if err := fh.node.db.IncrementRefCount(ctx, cdcChunk.Hash); err != nil {
+				return fmt.Errorf("failed to increment chunk ref count: %w", err)
+			}
+			continue
+		}
+
+		// New chunk - store in storage
+		if err := fh.node.storage.Put(ctx, cdcChunk.Hash, cdcData[i]); err != nil {
+			return fmt.Errorf("failed to store chunk: %w", err)
+		}
+
+		// Create chunk record in database
+		dbChunk := &db.Chunk{
+			Hash:           cdcChunk.Hash,
+			SizeBytes:      int64(cdcChunk.Size),
+			StorageBackend: fh.node.storage.Type(),
+			StoragePath:    cdcChunk.Hash[:2] + "/" + cdcChunk.Hash + ".chunk",
+			RefCount:       1,
+			IsEncrypted:    false,
+			CreatedAt:      time.Now(),
+		}
+		if err := fh.node.db.CreateChunk(ctx, dbChunk); err != nil {
+			return fmt.Errorf("failed to create chunk record: %w", err)
+		}
+	}
+
+	// Calculate checksum of the full data
+	hash := sha256.Sum256(fh.data)
+	checksum := hex.EncodeToString(hash[:])
+
+	// Create manifest
+	manifestID := "manifest_" + generateRandomString(16)
+	manifest := &db.Manifest{
+		ID:         manifestID,
+		FileID:     fileID,
+		Version:    1,
+		SizeBytes:  int64(len(fh.data)),
+		Chunks:     chunkHashes,
+		ChunkCount: len(chunkHashes),
+		Checksum:   checksum,
+		DeviceID:   "fuse",
+		CreatedAt:  time.Now(),
+	}
+
+	if err := fh.node.db.CreateManifest(ctx, manifest); err != nil {
+		return fmt.Errorf("failed to create manifest: %w", err)
+	}
+
+	// Update file with manifest ID
+	if err := fh.node.db.UpdateFile(ctx, fileID, map[string]any{
+		"manifest_id": manifestID,
+	}); err != nil {
+		return fmt.Errorf("failed to update file with manifest: %w", err)
+	}
+
+	return nil
+}
+
+// generateRandomString generates a random string of the given length
+func generateRandomString(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	result := make([]byte, length)
+	for i := range result {
+		result[i] = charset[time.Now().UnixNano()%int64(len(charset))]
+	}
+	return string(result)
+}
+
 // Mount mounts the VaultDrift filesystem at the given mount point
-func Mount(vfsService *vfs.VFS, database *db.Manager, userID, mountPoint string) (*fuse.Server, error) {
+func Mount(vfsService *vfs.VFS, database *db.Manager, store storage.Backend, userID, mountPoint string) (*fuse.Server, error) {
 	// Ensure mount point exists
 	if err := os.MkdirAll(mountPoint, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create mount point: %w", err)
 	}
 
-	fsys := NewVaultDriftFS(vfsService, database, userID)
+	fsys := NewVaultDriftFS(vfsService, database, store, userID)
 	return fsys.Mount(mountPoint)
 }
 

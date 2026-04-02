@@ -260,6 +260,12 @@ func (h *UploadHandler) uploadChunk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check storage availability after validation
+	if h.db == nil || h.storage == nil {
+		ErrorResponse(w, http.StatusServiceUnavailable, "Storage not available")
+		return
+	}
+
 	// Read chunk data
 	defer r.Body.Close()
 
@@ -313,11 +319,14 @@ func (h *UploadHandler) uploadChunk(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Determine storage backend type
+		storageBackend := h.storage.Type()
+
 		// Create chunk record in database
 		dbChunk := &db.Chunk{
 			Hash:           cdcChunk.Hash,
 			SizeBytes:      int64(cdcChunk.Size),
-			StorageBackend: "local", // TODO: Get from config
+			StorageBackend: storageBackend,
 			StoragePath:    cdcChunk.Hash[:2] + "/" + cdcChunk.Hash + ".chunk",
 			RefCount:       1,
 			IsEncrypted:    false,
@@ -357,6 +366,11 @@ func (h *UploadHandler) uploadChunk(w http.ResponseWriter, r *http.Request) {
 
 // completeUpload completes the upload and assembles the file.
 func (h *UploadHandler) completeUpload(w http.ResponseWriter, r *http.Request) {
+	if h.vfs == nil {
+		ErrorResponse(w, http.StatusServiceUnavailable, "VFS not available")
+		return
+	}
+
 	userID := GetUserIDFromRequest(r)
 	if userID == "" {
 		ErrorResponse(w, http.StatusUnauthorized, "Unauthorized")
@@ -552,13 +566,13 @@ func (h *UploadHandler) cancelUpload(w http.ResponseWriter, r *http.Request) {
 	// Check if session expired - still allow cancellation to clean up
 	// (no expiration check for cancel)
 
-	// Clean up session and any uploaded chunks
+	// Clean up session
 	h.sessionsMutex.Lock()
 	delete(h.sessions, sessionID)
 	h.sessionsMutex.Unlock()
 
-	// Clean up uploaded chunks from storage
-	if session != nil {
+	// Clean up uploaded chunks from storage only if db and storage are available
+	if h.db != nil && h.storage != nil && session != nil {
 		session.ChunksMutex.RLock()
 		chunkHashes := make([]string, 0)
 		for _, hashes := range session.ChunkHashes {
