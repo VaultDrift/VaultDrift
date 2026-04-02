@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -161,6 +162,11 @@ func (s *Server) setupRoutes() {
 	// Document preview handlers
 	previewHandler := preview.NewHandler(s.vfs, s.db, s.storage)
 	previewHandler.RegisterRoutes(s.router, authMiddleware.Authenticate)
+
+	// Thumbnail handlers
+	thumbCacheDir := filepath.Join("data", "thumbnails")
+	thumbnailHandler := NewThumbnailHandler(s.vfs, s.db, s.storage, thumbCacheDir)
+	thumbnailHandler.RegisterRoutes(s.router, authMiddleware)
 
 	// Real-time event streaming (SSE)
 	s.events.RegisterRoutes(s.router, authMiddleware)

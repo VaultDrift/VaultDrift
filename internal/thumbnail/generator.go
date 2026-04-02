@@ -192,7 +192,10 @@ func (g *Generator) thumbnailPath(fileID string, size string) string {
 	return filepath.Join(g.cacheDir, size, fileID+".png")
 }
 
-// GetSupportedTypes returns supported MIME types
+// CanGenerate checks if thumbnails can be generated for the given mime type
+func (g *Generator) CanGenerate(mimeType string) bool {
+	return g.isSupportedImage(mimeType)
+}
 func GetSupportedTypes() []string {
 	return []string{
 		"image/jpeg",
