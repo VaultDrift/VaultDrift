@@ -140,9 +140,9 @@ func (m *Manager) seed() error {
 	adminID, _ := util.GenerateUUIDv7()
 	_, err = m.db.Exec(
 		`INSERT INTO users (id, username, email, display_name, password_hash, role, quota_bytes, used_bytes,
-		status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		status, password_change_required, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		adminID, "admin", "admin@localhost", "Administrator", adminPasswordHash, "admin",
-		10737418240, 0, "active", now, now,
+		10737418240, 0, "active", 1, now, now,
 	)
 	if err != nil {
 		return err

@@ -21,6 +21,7 @@ type User struct {
 	RecoveryKeyHash     *string    `json:"-"`
 	AvatarChunkHash     *string    `json:"-"`
 	Status              string     `json:"status"`
+	PasswordChangeRequired bool    `json:"password_change_required"`
 	LastLoginAt         *time.Time `json:"last_login_at"`
 	CreatedAt           time.Time  `json:"created_at"`
 	UpdatedAt           time.Time  `json:"updated_at"`

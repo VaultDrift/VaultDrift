@@ -5,7 +5,7 @@ import (
 )
 
 // Schema version for migrations.
-const CurrentSchemaVersion = 1
+const CurrentSchemaVersion = 2
 
 // migrate runs database migrations to bring the schema to the current version.
 func (m *Manager) migrate() error {
@@ -46,6 +46,8 @@ func (m *Manager) runMigration(version int) error {
 	switch version {
 	case 1:
 		return m.migrationV1()
+	case 2:
+		return m.migrationV2()
 	default:
 		return fmt.Errorf("unknown migration version: %d", version)
 	}
@@ -333,5 +335,17 @@ func (m *Manager) migrationV1() error {
 		}
 	}
 
+	return nil
+}
+
+// migrationV2 adds password_change_required column to users table.
+func (m *Manager) migrationV2() error {
+	_, err := m.db.Exec(`
+		ALTER TABLE users ADD COLUMN password_change_required INTEGER NOT NULL DEFAULT 0
+	`)
+	if err != nil {
+		// Column might already exist (if upgrading from older version)
+		return nil
+	}
 	return nil
 }

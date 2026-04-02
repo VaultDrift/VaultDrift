@@ -52,7 +52,7 @@ func (m *Manager) GetUserByID(ctx context.Context, id string) (*User, error) {
 	query := `SELECT id, username, email, display_name, password_hash, role,
 		quota_bytes, used_bytes, totp_secret, totp_enabled,
 		public_key, encrypted_private_key, recovery_key_hash,
-		avatar_chunk_hash, status, last_login_at, created_at, updated_at
+		avatar_chunk_hash, status, password_change_required, last_login_at, created_at, updated_at
 	FROM users WHERE id = ?`
 
 	user := &User{}
@@ -64,7 +64,7 @@ func (m *Manager) GetUserByID(ctx context.Context, id string) (*User, error) {
 		&user.PasswordHash, &user.Role, &user.QuotaBytes, &user.UsedBytes,
 		&totpSecret, &user.TOTPEnabled,
 		&user.PublicKey, &user.EncryptedPrivateKey, &recoveryKeyHash,
-		&avatarChunkHash, &user.Status, &lastLoginAt,
+		&avatarChunkHash, &user.Status, &user.PasswordChangeRequired, &lastLoginAt,
 		&createdAt, &updatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -102,7 +102,7 @@ func (m *Manager) GetUserByUsername(ctx context.Context, username string) (*User
 	query := `SELECT id, username, email, display_name, password_hash, role,
 		quota_bytes, used_bytes, totp_secret, totp_enabled,
 		public_key, encrypted_private_key, recovery_key_hash,
-		avatar_chunk_hash, status, last_login_at, created_at, updated_at
+		avatar_chunk_hash, status, password_change_required, last_login_at, created_at, updated_at
 	FROM users WHERE username = ?`
 
 	user := &User{}
@@ -114,7 +114,7 @@ func (m *Manager) GetUserByUsername(ctx context.Context, username string) (*User
 		&user.PasswordHash, &user.Role, &user.QuotaBytes, &user.UsedBytes,
 		&totpSecret, &user.TOTPEnabled,
 		&user.PublicKey, &user.EncryptedPrivateKey, &recoveryKeyHash,
-		&avatarChunkHash, &user.Status, &lastLoginAt,
+		&avatarChunkHash, &user.Status, &user.PasswordChangeRequired, &lastLoginAt,
 		&createdAt, &updatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -300,7 +300,7 @@ func (m *Manager) ListUsers(ctx context.Context, offset, limit int, filter UserF
 	query := `SELECT id, username, email, display_name, password_hash, role,
 		quota_bytes, used_bytes, totp_secret, totp_enabled,
 		public_key, encrypted_private_key, recovery_key_hash,
-		avatar_chunk_hash, status, last_login_at, created_at, updated_at
+		avatar_chunk_hash, status, password_change_required, last_login_at, created_at, updated_at
 	FROM users WHERE ` + strings.Join(whereClauses, " AND ") + // #nosec G202 - whereClauses are safe, constructed from allowed filters only
 		` ORDER BY created_at DESC LIMIT ? OFFSET ?`
 
@@ -323,7 +323,7 @@ func (m *Manager) ListUsers(ctx context.Context, offset, limit int, filter UserF
 			&user.PasswordHash, &user.Role, &user.QuotaBytes, &user.UsedBytes,
 			&totpSecret, &user.TOTPEnabled,
 			&user.PublicKey, &user.EncryptedPrivateKey, &recoveryKeyHash,
-			&avatarChunkHash, &user.Status, &lastLoginAt,
+			&avatarChunkHash, &user.Status, &user.PasswordChangeRequired, &lastLoginAt,
 			&createdAt, &updatedAt,
 		)
 		if err != nil {
@@ -366,6 +366,22 @@ func (m *Manager) UpdateUsedBytes(ctx context.Context, id string, delta int64) e
 	result, err := m.db.ExecContext(ctx, query, delta, time.Now().UTC().Format(time.RFC3339), id)
 	if err != nil {
 		return fmt.Errorf("failed to update used bytes: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("user not found")
+	}
+
+	return nil
+}
+
+// UpdatePassword updates a user's password and clears the password_change_required flag.
+func (m *Manager) UpdatePassword(ctx context.Context, id string, passwordHash string) error {
+	query := "UPDATE users SET password_hash = ?, password_change_required = 0, updated_at = ? WHERE id = ?"
+	result, err := m.db.ExecContext(ctx, query, passwordHash, time.Now().UTC().Format(time.RFC3339), id)
+	if err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
 	}
 
 	rows, _ := result.RowsAffected()

@@ -13,12 +13,13 @@ import (
 
 // Common errors.
 var (
-	ErrInvalidCredentials = errors.New("invalid username or password")
-	ErrUserDisabled       = errors.New("account is disabled")
-	ErrUserLocked         = errors.New("account is locked")
-	ErrInvalidTOTP        = errors.New("invalid TOTP code")
-	ErrInvalidSession     = errors.New("invalid session")
-	ErrSessionExpired     = errors.New("session expired")
+	ErrInvalidCredentials   = errors.New("invalid username or password")
+	ErrUserDisabled         = errors.New("account is disabled")
+	ErrUserLocked           = errors.New("account is locked")
+	ErrInvalidTOTP          = errors.New("invalid TOTP code")
+	ErrInvalidSession       = errors.New("invalid session")
+	ErrSessionExpired       = errors.New("session expired")
+	ErrPasswordChangeRequired = errors.New("password change required")
 )
 
 // BruteForceConfig configures brute-force protection.
@@ -151,6 +152,11 @@ func (s *Service) Login(ctx context.Context, username, password, deviceName, dev
 
 	// Clear failed attempts on successful password
 	s.clearFailedAttempts(username)
+
+	// Check if password change is required
+	if user.PasswordChangeRequired {
+		return nil, ErrPasswordChangeRequired
+	}
 
 	// Check if TOTP is enabled
 	if user.TOTPEnabled && user.TOTPSecret != nil {
