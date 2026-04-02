@@ -118,6 +118,10 @@ func (s *Server) setupRoutes() {
 	// Create auth middleware
 	authMiddleware := NewAuthMiddleware(s.authSvc, nil, s.rbac, s.jwtSecret)
 
+	// User handlers (profile, settings)
+	userHandler := NewUserHandler(s.db, s.authSvc)
+	userHandler.RegisterRoutes(s.router, authMiddleware)
+
 	// File handlers
 	fileHandler := NewFileHandler(s.vfs, s.db, s.events)
 	fileHandler.RegisterRoutes(s.router, authMiddleware)
