@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/vaultdrift/vaultdrift/internal/auth"
 	"github.com/vaultdrift/vaultdrift/internal/db"
 	"github.com/vaultdrift/vaultdrift/internal/vfs"
 )
@@ -28,27 +29,27 @@ func NewShareHandler(vfsService *vfs.VFS, database *db.Manager, events *EventNot
 }
 
 // RegisterRoutes registers the share routes.
-func (h *ShareHandler) RegisterRoutes(mux *http.ServeMux, auth *AuthMiddleware) {
+func (h *ShareHandler) RegisterRoutes(mux *http.ServeMux, middleware *AuthMiddleware) {
 	// Create share link
-	mux.Handle("POST /api/v1/files/{id}/shares", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.createShare))))
+	mux.Handle("POST /api/v1/files/{id}/shares", middleware.Authenticate(middleware.RequireAuth(http.HandlerFunc(h.createShare))))
 
 	// List shares for a file
-	mux.Handle("GET /api/v1/files/{id}/shares", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.listShares))))
+	mux.Handle("GET /api/v1/files/{id}/shares", middleware.Authenticate(middleware.RequireAuth(http.HandlerFunc(h.listShares))))
 
 	// List all shares created by user
-	mux.Handle("GET /api/v1/shares", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.listMyShares))))
+	mux.Handle("GET /api/v1/shares", middleware.Authenticate(middleware.RequireAuth(http.HandlerFunc(h.listMyShares))))
 
 	// List shares received by user
-	mux.Handle("GET /api/v1/shares/received", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.listReceivedShares))))
+	mux.Handle("GET /api/v1/shares/received", middleware.Authenticate(middleware.RequireAuth(http.HandlerFunc(h.listReceivedShares))))
 
 	// Get share details
-	mux.Handle("GET /api/v1/shares/{id}", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.getShare))))
+	mux.Handle("GET /api/v1/shares/{id}", middleware.Authenticate(middleware.RequireAuth(http.HandlerFunc(h.getShare))))
 
 	// Update share
-	mux.Handle("PUT /api/v1/shares/{id}", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.updateShare))))
+	mux.Handle("PUT /api/v1/shares/{id}", middleware.Authenticate(middleware.RequireAuth(http.HandlerFunc(h.updateShare))))
 
 	// Revoke/delete share
-	mux.Handle("DELETE /api/v1/shares/{id}", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.revokeShare))))
+	mux.Handle("DELETE /api/v1/shares/{id}", middleware.Authenticate(middleware.RequireAuth(http.HandlerFunc(h.revokeShare))))
 }
 
 // createShareRequest represents a request to create a share.
@@ -134,6 +135,17 @@ func (h *ShareHandler) createShare(w http.ResponseWriter, r *http.Request) {
 		expiresAt = &t
 	}
 
+	// Hash password if provided
+	var passwordHash *string
+	if req.Password != nil && *req.Password != "" {
+		hashed, err := auth.HashPassword(*req.Password)
+		if err != nil {
+			ErrorResponse(w, http.StatusInternalServerError, "Failed to hash password")
+			return
+		}
+		passwordHash = &hashed
+	}
+
 	// Create share record
 	share := &db.Share{
 		ID:           generateShareID(),
@@ -141,7 +153,7 @@ func (h *ShareHandler) createShare(w http.ResponseWriter, r *http.Request) {
 		CreatedBy:    userID,
 		ShareType:    req.ShareType,
 		Token:        token,
-		PasswordHash: req.Password, // TODO: Hash the password
+		PasswordHash: passwordHash,
 		ExpiresAt:    expiresAt,
 		MaxDownloads: req.MaxDownloads,
 		AllowUpload:  req.AllowUpload,

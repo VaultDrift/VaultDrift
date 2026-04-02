@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/vaultdrift/vaultdrift/internal/auth"
 	"github.com/vaultdrift/vaultdrift/internal/db"
 	"github.com/vaultdrift/vaultdrift/internal/storage"
 )
@@ -104,7 +105,12 @@ func (h *PublicShareHandler) downloadSharedFile(w http.ResponseWriter, r *http.R
 			http.Error(w, "Password required", http.StatusUnauthorized)
 			return
 		}
-		// TODO: Verify password hash
+		// Verify password hash
+		valid, err := auth.VerifyPassword(password, *share.PasswordHash)
+		if err != nil || !valid {
+			http.Error(w, "Invalid password", http.StatusUnauthorized)
+			return
+		}
 	}
 
 	// Check preview-only restriction
@@ -168,6 +174,12 @@ func (h *PublicShareHandler) streamSharedFile(w http.ResponseWriter, r *http.Req
 		if password == "" {
 			w.Header().Set("WWW-Authenticate", "Bearer realm=\"share\"")
 			http.Error(w, "Password required", http.StatusUnauthorized)
+			return
+		}
+		// Verify password hash
+		valid, err := auth.VerifyPassword(password, *share.PasswordHash)
+		if err != nil || !valid {
+			http.Error(w, "Invalid password", http.StatusUnauthorized)
 			return
 		}
 	}
