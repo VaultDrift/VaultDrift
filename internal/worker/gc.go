@@ -69,18 +69,42 @@ func (w *GCWorker) Handler() Handler {
 func (w *GCWorker) collectOrphanedChunks(ctx context.Context, spec GCSpec) (*GCResult, error) {
 	result := &GCResult{Type: "orphaned-chunks"}
 
-	// Query for orphaned chunks
-	// This is a simplified version - in production, you'd want to:
-	// 1. Get all chunk IDs from storage
-	// 2. Get all referenced chunk IDs from database
-	// 3. Find chunks in storage but not in database
-	// 4. Delete orphaned chunks
-
 	log.Println("Scanning for orphaned chunks...")
 
-	// TODO: Implement actual orphaned chunk detection
-	// For now, just log that we would do this
+	// Get chunks with ref_count = 0
+	orphanedChunks, err := w.db.ListOrphanedChunks(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list orphaned chunks: %w", err)
+	}
 
+	log.Printf("Found %d orphaned chunks to collect", len(orphanedChunks))
+
+	for _, chunk := range orphanedChunks {
+		// Skip if chunk is newer than the retention period
+		if spec.OlderThan.IsZero() || chunk.CreatedAt.After(spec.OlderThan) {
+			continue
+		}
+
+		// Delete from storage first
+		if err := w.storage.Delete(ctx, chunk.Hash); err != nil {
+			log.Printf("Failed to delete chunk from storage: %s, error: %v", chunk.Hash, err)
+			result.Errors = append(result.Errors, fmt.Errorf("failed to delete chunk %s from storage: %w", chunk.Hash, err))
+			continue
+		}
+
+		// Delete from database
+		if err := w.db.DeleteChunk(ctx, chunk.Hash); err != nil {
+			log.Printf("Failed to delete chunk from database: %s, error: %v", chunk.Hash, err)
+			result.Errors = append(result.Errors, fmt.Errorf("failed to delete chunk %s from database: %w", chunk.Hash, err))
+			continue
+		}
+
+		result.Collected++
+		result.Freed += chunk.SizeBytes
+		log.Printf("Deleted orphaned chunk: %s (%d bytes)", chunk.Hash, chunk.SizeBytes)
+	}
+
+	log.Printf("Orphaned chunk collection complete: %d chunks freed, %d bytes", result.Collected, result.Freed)
 	return result, nil
 }
 
