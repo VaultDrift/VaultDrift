@@ -2,6 +2,7 @@ package desktop
 
 import (
 	"fmt"
+	"log"
 	"os/exec"
 	"runtime"
 
@@ -87,9 +88,12 @@ func (t *TrayMenu) openWebInterface() {
 
 // triggerSync triggers a sync operation
 func (t *TrayMenu) triggerSync() {
-	// TODO: Trigger sync with local sync folder
-	// For now, just log
-	fmt.Println("Sync triggered from tray")
+	if err := t.app.TriggerSync(); err != nil {
+		log.Printf("Sync failed: %v", err)
+		// Could show a notification here
+		return
+	}
+	log.Println("Sync triggered from tray")
 }
 
 // openSettings opens the settings
@@ -100,10 +104,10 @@ func (t *TrayMenu) openSettings() {
 
 // showAbout shows the about dialog
 func (t *TrayMenu) showAbout() {
-	// TODO: Show native about dialog
-	// For now, just open the web interface
-	url := fmt.Sprintf("http://localhost:%d", t.app.config.Server.Port)
-	_ = openBrowser(url)
+	// Show native about dialog using message box (platform-specific)
+	// For now, show info in browser
+	aboutURL := fmt.Sprintf("http://localhost:%d/#/about", t.app.config.Server.Port)
+	_ = openBrowser(aboutURL)
 }
 
 // openBrowser opens a URL in the default browser

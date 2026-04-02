@@ -4,11 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/vaultdrift/vaultdrift/internal/auth"
+	"github.com/vaultdrift/vaultdrift/internal/cli"
 	"github.com/vaultdrift/vaultdrift/internal/config"
 	"github.com/vaultdrift/vaultdrift/internal/db"
 	"github.com/vaultdrift/vaultdrift/internal/server"
@@ -18,14 +21,16 @@ import (
 
 // App represents the desktop application
 type App struct {
-	config  *config.Config
-	server  *server.Server
-	vfs     *vfs.VFS
-	db      *db.Manager
-	storage storage.Backend
-	ctx     context.Context
-	cancel  context.CancelFunc
-	tray    *TrayMenu
+	config     *config.Config
+	server     *server.Server
+	vfs        *vfs.VFS
+	db         *db.Manager
+	storage    storage.Backend
+	ctx        context.Context
+	cancel     context.CancelFunc
+	tray       *TrayMenu
+	syncDaemon *cli.SyncDaemon
+	syncFolder string
 }
 
 // NewApp creates a new desktop application
@@ -58,13 +63,26 @@ func NewApp(cfg *config.Config) (*App, error) {
 
 	// Create app
 	app := &App{
-		config:  cfg,
-		server:  httpServer,
-		vfs:     vfsService,
-		db:      database,
-		storage: store,
-		ctx:     ctx,
-		cancel:  cancel,
+		config:     cfg,
+		server:     httpServer,
+		vfs:        vfsService,
+		db:         database,
+		storage:    store,
+		ctx:        ctx,
+		cancel:     cancel,
+		syncFolder: cfg.Sync.DesktopSyncFolder,
+	}
+
+	// Create sync daemon if sync folder is configured
+	if app.syncFolder != "" {
+		// Create a CLI instance for sync operations
+		cliInstance := &cli.CLI{} // Desktop uses internal API directly
+		syncDaemon, err := cli.NewSyncDaemon(cliInstance, app.syncFolder)
+		if err != nil {
+			log.Printf("Warning: failed to create sync daemon: %v", err)
+		} else {
+			app.syncDaemon = syncDaemon
+		}
 	}
 
 	// Create tray menu
@@ -146,6 +164,46 @@ func (a *App) cleanup() {
 
 // IsServerRunning checks if the server is accessible
 func (a *App) IsServerRunning() bool {
-	// TODO: Implement health check
-	return true
+	// Try to ping the health endpoint
+	url := fmt.Sprintf("http://localhost:%d/health", a.config.Server.Port)
+	client := http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}
+
+// TriggerSync triggers a sync operation with the local sync folder
+func (a *App) TriggerSync() error {
+	if a.syncDaemon == nil {
+		if a.syncFolder == "" {
+			return fmt.Errorf("no sync folder configured")
+		}
+		// Create sync daemon on demand
+		cliInstance := &cli.CLI{}
+		syncDaemon, err := cli.NewSyncDaemon(cliInstance, a.syncFolder)
+		if err != nil {
+			return fmt.Errorf("failed to create sync daemon: %w", err)
+		}
+		a.syncDaemon = syncDaemon
+	}
+
+	// Start sync daemon in background
+	go func() {
+		if err := a.syncDaemon.Start(); err != nil {
+			log.Printf("Sync daemon error: %v", err)
+		}
+	}()
+
+	return nil
+}
+
+// StopSync stops the sync daemon
+func (a *App) StopSync() error {
+	if a.syncDaemon != nil {
+		return a.syncDaemon.Stop()
+	}
+	return nil
 }

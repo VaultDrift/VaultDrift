@@ -84,11 +84,12 @@ type AuthConfig struct {
 
 // SyncConfig holds sync protocol configuration.
 type SyncConfig struct {
-	ChunkSizeMin           int  `yaml:"chunk_size_min"`
-	ChunkSizeAvg           int  `yaml:"chunk_size_avg"`
-	ChunkSizeMax           int  `yaml:"chunk_size_max"`
-	MaxConcurrentTransfers int  `yaml:"max_concurrent_transfers"`
-	WebSocketEnabled       bool `yaml:"websocket_enabled"`
+	ChunkSizeMin           int    `yaml:"chunk_size_min"`
+	ChunkSizeAvg           int    `yaml:"chunk_size_avg"`
+	ChunkSizeMax           int    `yaml:"chunk_size_max"`
+	MaxConcurrentTransfers int    `yaml:"max_concurrent_transfers"`
+	WebSocketEnabled       bool   `yaml:"websocket_enabled"`
+	DesktopSyncFolder      string `yaml:"desktop_sync_folder"` // Desktop client sync folder path
 }
 
 // EncryptionConfig holds encryption configuration.
