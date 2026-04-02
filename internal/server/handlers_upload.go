@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -10,12 +11,18 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vaultdrift/vaultdrift/internal/chunk"
+	"github.com/vaultdrift/vaultdrift/internal/db"
+	"github.com/vaultdrift/vaultdrift/internal/storage"
 	"github.com/vaultdrift/vaultdrift/internal/vfs"
 )
 
 // UploadHandler handles chunked upload API requests.
 type UploadHandler struct {
 	vfs           *vfs.VFS
+	db            *db.Manager
+	storage       storage.Backend
+	chunker       *chunk.Chunker
 	sessions      map[string]*UploadSession
 	sessionsMutex sync.RWMutex
 }
@@ -34,6 +41,7 @@ type UploadSession struct {
 	ExpiresAt   time.Time          `json:"expires_at"`
 	Chunks      map[int]*ChunkInfo `json:"chunks,omitempty"`
 	TotalChunks int                `json:"total_chunks"`
+	ChunkHashes map[int][]string   `json:"chunk_hashes,omitempty"` // CDC chunk hashes per upload chunk
 	ChunksMutex sync.RWMutex       `json:"-"`
 }
 
@@ -82,10 +90,13 @@ const (
 )
 
 // NewUploadHandler creates a new upload handler.
-func NewUploadHandler(vfsService *vfs.VFS) *UploadHandler {
+func NewUploadHandler(vfsService *vfs.VFS, database *db.Manager, store storage.Backend) *UploadHandler {
 	h := &UploadHandler{
-		vfs:      vfsService,
-		sessions: make(map[string]*UploadSession),
+		vfs:           vfsService,
+		db:            database,
+		storage:       store,
+		chunker:       chunk.DefaultChunker(),
+		sessions:      make(map[string]*UploadSession),
 	}
 
 	// Start cleanup goroutine
@@ -166,6 +177,7 @@ func (h *UploadHandler) createUpload(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt:   time.Now().Add(SessionTTL),
 		Chunks:      make(map[int]*ChunkInfo),
 		TotalChunks: totalChunks,
+		ChunkHashes: make(map[int][]string),
 	}
 
 	h.sessionsMutex.Lock()
@@ -266,13 +278,55 @@ func (h *UploadHandler) uploadChunk(w http.ResponseWriter, r *http.Request) {
 	}
 	chunkData = chunkData[:n]
 
-	// TODO: Process chunk with CDC (Content-Defined Chunking)
-	// For now, just store the chunk info
-	// In production, this would:
-	// 1. Apply CDC to find natural boundaries
-	// 2. Deduplicate chunks
-	// 3. Encrypt chunks with AES-256-GCM
-	// 4. Store chunks in storage backend
+	// Process chunk with CDC (Content-Defined Chunking)
+	cdcChunks, cdcData, err := h.chunker.ChunkWithData(bytes.NewReader(chunkData))
+	if err != nil {
+		ErrorResponse(w, http.StatusInternalServerError, "Failed to process chunk with CDC")
+		return
+	}
+
+	// Process each CDC chunk: deduplicate and store
+	chunkHashes := make([]string, 0, len(cdcChunks))
+	for i, cdcChunk := range cdcChunks {
+		chunkHashes = append(chunkHashes, cdcChunk.Hash)
+
+		// Check if chunk already exists (deduplication)
+		exists, err := h.db.ChunkExists(r.Context(), cdcChunk.Hash)
+		if err != nil {
+			ErrorResponse(w, http.StatusInternalServerError, "Failed to check chunk existence")
+			return
+		}
+
+		if exists {
+			// Chunk exists, increment reference count
+			if err := h.db.IncrementRefCount(r.Context(), cdcChunk.Hash); err != nil {
+				ErrorResponse(w, http.StatusInternalServerError, "Failed to update chunk ref count")
+				return
+			}
+			continue
+		}
+
+		// New chunk - store in storage
+		if err := h.storage.Put(r.Context(), cdcChunk.Hash, cdcData[i]); err != nil {
+			ErrorResponse(w, http.StatusInternalServerError, "Failed to store chunk")
+			return
+		}
+
+		// Create chunk record in database
+		dbChunk := &db.Chunk{
+			Hash:           cdcChunk.Hash,
+			SizeBytes:      int64(cdcChunk.Size),
+			StorageBackend: "local", // TODO: Get from config
+			StoragePath:    cdcChunk.Hash[:2] + "/" + cdcChunk.Hash + ".chunk",
+			RefCount:       1,
+			IsEncrypted:    false,
+			CreatedAt:      time.Now(),
+		}
+		if err := h.db.CreateChunk(r.Context(), dbChunk); err != nil {
+			ErrorResponse(w, http.StatusInternalServerError, "Failed to create chunk record")
+			return
+		}
+	}
 
 	// Record chunk upload
 	session.ChunksMutex.Lock()
@@ -281,6 +335,7 @@ func (h *UploadHandler) uploadChunk(w http.ResponseWriter, r *http.Request) {
 		Size:       n,
 		UploadedAt: time.Now(),
 	}
+	session.ChunkHashes[chunkIndex] = chunkHashes
 
 	// Update status if all chunks uploaded
 	if len(session.Chunks) == session.TotalChunks {
@@ -291,9 +346,11 @@ func (h *UploadHandler) uploadChunk(w http.ResponseWriter, r *http.Request) {
 	session.ChunksMutex.Unlock()
 
 	SuccessResponse(w, map[string]any{
-		"status":         "uploaded",
-		"chunk_index":    chunkIndex,
-		"bytes_received": n,
+		"status":           "uploaded",
+		"chunk_index":      chunkIndex,
+		"bytes_received":   n,
+		"cdc_chunks":       len(cdcChunks),
+		"chunk_hashes":     chunkHashes,
 	})
 }
 
@@ -350,6 +407,44 @@ func (h *UploadHandler) completeUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Collect all chunk hashes from all upload chunks
+	session.ChunksMutex.RLock()
+	allChunkHashes := make([]string, 0)
+	for i := 0; i < session.TotalChunks; i++ {
+		hashes, exists := session.ChunkHashes[i]
+		if exists {
+			allChunkHashes = append(allChunkHashes, hashes...)
+		}
+	}
+	session.ChunksMutex.RUnlock()
+
+	// Create manifest for the file
+	manifestID := "manifest_" + generateRandomString(16)
+	manifest := &db.Manifest{
+		ID:         manifestID,
+		FileID:     file.ID,
+		Version:    1,
+		SizeBytes:  session.Size,
+		Chunks:     allChunkHashes,
+		ChunkCount: len(allChunkHashes),
+		Checksum:   session.Checksum,
+		DeviceID:   "server",
+		CreatedAt:  time.Now(),
+	}
+
+	if err := h.db.CreateManifest(r.Context(), manifest); err != nil {
+		ErrorResponse(w, http.StatusInternalServerError, "Failed to create manifest")
+		return
+	}
+
+	// Update file with manifest ID
+	if err := h.db.UpdateFile(r.Context(), file.ID, map[string]any{
+		"manifest_id": manifestID,
+	}); err != nil {
+		ErrorResponse(w, http.StatusInternalServerError, "Failed to update file with manifest")
 		return
 	}
 

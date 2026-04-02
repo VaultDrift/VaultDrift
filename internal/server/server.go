@@ -127,7 +127,7 @@ func (s *Server) setupRoutes() {
 	folderHandler.RegisterRoutes(s.router, authMiddleware)
 
 	// Upload handlers
-	uploadHandler := NewUploadHandler(s.vfs)
+	uploadHandler := NewUploadHandler(s.vfs, s.db, s.storage)
 	uploadHandler.RegisterRoutes(s.router, authMiddleware)
 
 	// Download handlers
