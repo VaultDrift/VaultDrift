@@ -7,7 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
-	"fmt"
+	"errors"
 )
 
 func init() {
@@ -19,9 +19,9 @@ type Driver struct{}
 
 // Open opens a new database connection.
 func (d *Driver) Open(name string) (driver.Conn, error) {
-	// For now, delegate to SQLite
-	// In production, this would open a CobaltDB connection
-	return nil, fmt.Errorf("cobaltdb: not fully implemented, use sqlite for development")
+	// CobaltDB is not yet fully implemented
+	// For now, use SQLite directly via database/sql with sqlite3 driver
+	return nil, errors.New("cobaltdb: use sqlite3 driver directly - import _ \"github.com/mattn/go-sqlite3\" and sql.Open(\"sqlite3\", path)")
 }
 
 func (d *Driver) OpenConnector(name string) (driver.Connector, error) {
