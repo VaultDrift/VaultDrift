@@ -451,6 +451,8 @@ func (h *UploadHandler) completeUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.db.CreateManifest(r.Context(), manifest); err != nil {
+		// Cleanup: delete the orphaned file record
+		_ = h.vfs.Delete(r.Context(), file.ID)
 		ErrorResponse(w, http.StatusInternalServerError, "Failed to create manifest")
 		return
 	}
@@ -459,6 +461,9 @@ func (h *UploadHandler) completeUpload(w http.ResponseWriter, r *http.Request) {
 	if err := h.db.UpdateFile(r.Context(), file.ID, map[string]any{
 		"manifest_id": manifestID,
 	}); err != nil {
+		// Cleanup: delete manifest and orphaned file record
+		_ = h.db.DeleteManifest(r.Context(), manifestID)
+		_ = h.vfs.Delete(r.Context(), file.ID)
 		ErrorResponse(w, http.StatusInternalServerError, "Failed to update file with manifest")
 		return
 	}

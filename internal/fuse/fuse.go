@@ -518,6 +518,11 @@ func (fh *FileHandle) createManifestAndStoreChunks(ctx context.Context, fileID s
 	}
 
 	if err := fh.node.db.CreateManifest(ctx, manifest); err != nil {
+		// Cleanup: delete orphaned chunks
+		for _, hash := range chunkHashes {
+			_ = fh.node.storage.Delete(ctx, hash)
+			_ = fh.node.db.DeleteChunk(ctx, hash)
+		}
 		return fmt.Errorf("failed to create manifest: %w", err)
 	}
 
@@ -525,6 +530,12 @@ func (fh *FileHandle) createManifestAndStoreChunks(ctx context.Context, fileID s
 	if err := fh.node.db.UpdateFile(ctx, fileID, map[string]any{
 		"manifest_id": manifestID,
 	}); err != nil {
+		// Cleanup: delete manifest and orphaned chunks
+		_ = fh.node.db.DeleteManifest(ctx, manifestID)
+		for _, hash := range chunkHashes {
+			_ = fh.node.storage.Delete(ctx, hash)
+			_ = fh.node.db.DeleteChunk(ctx, hash)
+		}
 		return fmt.Errorf("failed to update file with manifest: %w", err)
 	}
 
