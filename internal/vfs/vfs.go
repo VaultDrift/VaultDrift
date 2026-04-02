@@ -276,6 +276,117 @@ type Breadcrumb struct {
 	Name string `json:"name"`
 }
 
+// Copy copies a file or folder to a new parent with optional new name.
+func (v *VFS) Copy(ctx context.Context, userID, fileID, newParentID, newName string) error {
+	// Get source file
+	source, err := v.db.GetFileByID(ctx, fileID)
+	if err != nil {
+		return ErrNotFound
+	}
+
+	// Verify ownership
+	if source.UserID != userID {
+		return ErrPermissionDenied
+	}
+
+	// Use original name if no new name provided
+	if newName == "" {
+		newName = source.Name
+	}
+
+	// Validate new name
+	if !isValidName(newName) {
+		return ErrInvalidName
+	}
+
+	// Check if destination already exists
+	_, err = v.db.GetFileByPath(ctx, userID, &newParentID, newName)
+	if err == nil {
+		return ErrAlreadyExists
+	}
+
+	// Create the copy
+	now := time.Now().UTC()
+	copyFile := &db.File{
+		ID:           generateID(source.Type),
+		UserID:       userID,
+		ParentID:     &newParentID,
+		Name:         newName,
+		Type:         source.Type,
+		SizeBytes:    source.SizeBytes,
+		MimeType:     source.MimeType,
+		ManifestID:   source.ManifestID,
+		Checksum:     source.Checksum,
+		IsEncrypted:  source.IsEncrypted,
+		EncryptedKey: source.EncryptedKey,
+		Version:      1, // Reset version for copy
+		IsTrashed:    false,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+
+	if newParentID == "" {
+		copyFile.ParentID = nil
+	}
+
+	if err := v.db.CreateFile(ctx, copyFile); err != nil {
+		return fmt.Errorf("failed to create copy: %w", err)
+	}
+
+	// If it's a folder, recursively copy contents
+	if source.Type == "folder" {
+		if err := v.copyFolderContents(ctx, userID, fileID, copyFile.ID); err != nil {
+			return fmt.Errorf("failed to copy folder contents: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// copyFolderContents recursively copies folder contents.
+func (v *VFS) copyFolderContents(ctx context.Context, userID, sourceFolderID, destFolderID string) error {
+	// List all items in source folder
+	opts := db.ListOpts{Limit: 1000}
+	items, err := v.db.ListDirectory(ctx, userID, &sourceFolderID, opts)
+	if err != nil {
+		return err
+	}
+
+	for _, item := range items {
+		now := time.Now().UTC()
+		copyItem := &db.File{
+			ID:           generateID(item.Type),
+			UserID:       userID,
+			ParentID:     &destFolderID,
+			Name:         item.Name,
+			Type:         item.Type,
+			SizeBytes:    item.SizeBytes,
+			MimeType:     item.MimeType,
+			ManifestID:   item.ManifestID,
+			Checksum:     item.Checksum,
+			IsEncrypted:  item.IsEncrypted,
+			EncryptedKey: item.EncryptedKey,
+			Version:      item.Version,
+			IsTrashed:    false,
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		}
+
+		if err := v.db.CreateFile(ctx, copyItem); err != nil {
+			return fmt.Errorf("failed to copy item %s: %w", item.Name, err)
+		}
+
+		// Recursively copy subfolders
+		if item.Type == "folder" {
+			if err := v.copyFolderContents(ctx, userID, item.ID, copyItem.ID); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 // Helper functions
 
 func isValidName(name string) bool {

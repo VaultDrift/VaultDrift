@@ -434,11 +434,22 @@ func (h *Handler) handleCopy(w http.ResponseWriter, r *http.Request, webdavPath 
 		destParentID = parent.ID
 	}
 
-	// VFS doesn't have Copy method yet - return not implemented
-	_ = source
-	_ = destParentID
-	_ = destName
-	h.sendError(w, http.StatusNotImplemented, "Copy not yet implemented")
+	// VFS Copy method
+	if err := h.vfs.Copy(r.Context(), userID, source.ID, destParentID, destName); err != nil {
+		switch err {
+		case vfs.ErrAlreadyExists:
+			h.sendError(w, http.StatusPreconditionFailed, "Destination already exists")
+		case vfs.ErrInvalidName:
+			h.sendError(w, http.StatusBadRequest, "Invalid destination name")
+		case vfs.ErrPermissionDenied:
+			h.sendError(w, http.StatusForbidden, "Access denied")
+		default:
+			h.sendError(w, http.StatusInternalServerError, "Copy failed")
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
 }
 
 // handleMove handles MOVE requests
