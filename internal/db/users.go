@@ -353,6 +353,10 @@ func (m *Manager) ListUsers(ctx context.Context, offset, limit int, filter UserF
 		users = append(users, user)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("failed to iterate users: %w", err)
+	}
+
 	return users, total, nil
 }
 

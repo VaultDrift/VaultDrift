@@ -80,5 +80,9 @@ func (m *Manager) GetAllSettings(ctx context.Context) (map[string]string, error)
 		settings[key] = value
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate settings: %w", err)
+	}
+
 	return settings, nil
 }

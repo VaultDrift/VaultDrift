@@ -219,6 +219,10 @@ func (m *Manager) ListDirectory(ctx context.Context, userID string, parentID *st
 		files = append(files, file)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate files: %w", err)
+	}
+
 	return files, nil
 }
 
@@ -368,6 +372,10 @@ func (m *Manager) ListTrash(ctx context.Context, userID string) ([]*File, error)
 		files = append(files, file)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate files: %w", err)
+	}
+
 	return files, nil
 }
 
@@ -462,6 +470,10 @@ func (m *Manager) SearchFiles(ctx context.Context, userID, query string, limit i
 		files = append(files, file)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate files: %w", err)
+	}
+
 	return files, nil
 }
 
@@ -523,6 +535,10 @@ func (m *Manager) RecentFiles(ctx context.Context, userID string, limit int) ([]
 		}
 
 		files = append(files, file)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate files: %w", err)
 	}
 
 	return files, nil

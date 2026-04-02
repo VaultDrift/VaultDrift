@@ -99,6 +99,10 @@ func (m *Manager) GetSessionsByUser(ctx context.Context, userID string) ([]*Sess
 		sessions = append(sessions, session)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate sessions: %w", err)
+	}
+
 	return sessions, nil
 }
 

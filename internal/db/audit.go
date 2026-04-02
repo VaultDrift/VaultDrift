@@ -97,6 +97,10 @@ func (m *Manager) GetAuditEntries(ctx context.Context, userID *string, action, r
 		entries = append(entries, entry)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("failed to iterate audit entries: %w", err)
+	}
+
 	return entries, total, nil
 }
 

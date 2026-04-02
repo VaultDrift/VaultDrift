@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -158,17 +159,20 @@ func generateRequestID() string {
 
 // RateLimitMiddleware simple rate limiting middleware.
 type RateLimitMiddleware struct {
-	requests map[string][]time.Time
-	limit    int
-	window   time.Duration
+	requests   map[string][]time.Time
+	mu         sync.RWMutex
+	limit      int
+	window     time.Duration
+	lastClean  time.Time
 }
 
 // NewRateLimitMiddleware creates a new rate limiter.
 func NewRateLimitMiddleware(limit int, window time.Duration) *RateLimitMiddleware {
 	return &RateLimitMiddleware{
-		requests: make(map[string][]time.Time),
-		limit:    limit,
-		window:   window,
+		requests:  make(map[string][]time.Time),
+		limit:     limit,
+		window:    window,
+		lastClean: time.Now(),
 	}
 }
 
@@ -179,6 +183,15 @@ func (rl *RateLimitMiddleware) Limit(next http.Handler) http.Handler {
 
 		now := time.Now()
 		cutoff := now.Add(-rl.window)
+
+		rl.mu.Lock()
+		defer rl.mu.Unlock()
+
+		// Periodic cleanup of old clients (every 100 requests or 1 minute)
+		if now.Sub(rl.lastClean) > time.Minute {
+			rl.cleanupOldClients(now)
+			rl.lastClean = now
+		}
 
 		// Clean old requests and count current
 		var count int
@@ -198,4 +211,21 @@ func (rl *RateLimitMiddleware) Limit(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// cleanupOldClients removes clients with no recent requests to prevent memory leak.
+func (rl *RateLimitMiddleware) cleanupOldClients(now time.Time) {
+	cutoff := now.Add(-rl.window)
+	for clientID, requests := range rl.requests {
+		hasRecent := false
+		for _, t := range requests {
+			if t.After(cutoff) {
+				hasRecent = true
+				break
+			}
+		}
+		if !hasRecent {
+			delete(rl.requests, clientID)
+		}
+	}
 }

@@ -108,6 +108,10 @@ func (m *Manager) GetDevicesByUser(ctx context.Context, userID string) ([]*Devic
 		devices = append(devices, device)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate devices: %w", err)
+	}
+
 	return devices, nil
 }
 
@@ -238,6 +242,10 @@ func (m *Manager) GetSyncStatesByDevice(ctx context.Context, deviceID string) ([
 		}
 
 		states = append(states, state)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate sync states: %w", err)
 	}
 
 	return states, nil

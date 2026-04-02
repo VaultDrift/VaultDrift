@@ -128,6 +128,10 @@ func (m *Manager) ListVersions(ctx context.Context, fileID string) ([]*Manifest,
 		manifests = append(manifests, manifest)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate manifests: %w", err)
+	}
+
 	return manifests, nil
 }
 

@@ -127,6 +127,10 @@ func (m *Manager) ListOrphanedChunks(ctx context.Context) ([]*Chunk, error) {
 		chunks = append(chunks, chunk)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate chunks: %w", err)
+	}
+
 	return chunks, nil
 }
 

@@ -87,7 +87,28 @@ func NewService(db *db.Manager, jwtSecret []byte, opts ...ServiceOption) *Servic
 		opt(s)
 	}
 
+	// Start cleanup goroutines for memory leak prevention
+	go s.cleanupFailedAttempts()
+	go cleanupTOTPSessions()
+
 	return s
+}
+
+// cleanupFailedAttempts periodically removes old failed attempt records.
+func (s *Service) cleanupFailedAttempts() {
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		s.attemptsMu.Lock()
+		cutoff := time.Now().UTC().Add(-24 * time.Hour) // Remove entries older than 24 hours
+		for username, attempt := range s.failedAttempts {
+			if attempt.LastFailed.Before(cutoff) {
+				delete(s.failedAttempts, username)
+			}
+		}
+		s.attemptsMu.Unlock()
+	}
 }
 
 // LoginResult contains the result of a successful login.
@@ -425,4 +446,21 @@ func (s *Service) clearTOTPSession(sessionID string) {
 	totpSessionsMu.Lock()
 	delete(totpSessions, sessionID)
 	totpSessionsMu.Unlock()
+}
+
+// cleanupTOTPSessions periodically removes expired TOTP sessions.
+func cleanupTOTPSessions() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		totpSessionsMu.Lock()
+		cutoff := time.Now().UTC().Add(-10 * time.Minute) // Remove sessions older than 10 minutes
+		for sessionID, session := range totpSessions {
+			if session.CreatedAt.Before(cutoff) {
+				delete(totpSessions, sessionID)
+			}
+		}
+		totpSessionsMu.Unlock()
+	}
 }

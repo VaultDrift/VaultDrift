@@ -188,6 +188,10 @@ func (m *Manager) GetSharesByFile(ctx context.Context, fileID string) ([]*Share,
 		shares = append(shares, share)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate shares: %w", err)
+	}
+
 	return shares, nil
 }
 
@@ -248,6 +252,10 @@ func (m *Manager) GetSharesByUser(ctx context.Context, userID string) ([]*Share,
 		shares = append(shares, share)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate shares: %w", err)
+	}
+
 	return shares, nil
 }
 
@@ -306,6 +314,10 @@ func (m *Manager) GetReceivedShares(ctx context.Context, userID string) ([]*Shar
 		}
 
 		shares = append(shares, share)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate shares: %w", err)
 	}
 
 	return shares, nil

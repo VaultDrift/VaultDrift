@@ -158,6 +158,10 @@ func (m *Manager) ListAPITokensByUser(ctx context.Context, userID string) ([]*AP
 		tokens = append(tokens, token)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate API tokens: %w", err)
+	}
+
 	return tokens, nil
 }
 
