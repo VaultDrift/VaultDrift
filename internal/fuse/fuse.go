@@ -310,9 +310,49 @@ func (n *FileNode) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint3
 
 // Read implements fs.NodeReader
 func (n *FileNode) Read(ctx context.Context, fh fs.FileHandle, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
-	// Note: Full implementation would use vfs.ReadFile
-	// For now, return empty data
-	return fuse.ReadResultData([]byte{}), fs.OK
+	handle := fh.(*FileHandle)
+
+	// Load data if not already loaded
+	if handle.data == nil {
+		file, err := n.vfs.GetFile(ctx, n.fileID)
+		if err != nil {
+			return fuse.ReadResultData([]byte{}), syscall.EIO
+		}
+
+		if file.ManifestID == nil || *file.ManifestID == "" {
+			return fuse.ReadResultData([]byte{}), fs.OK
+		}
+
+		manifest, err := n.db.GetManifest(ctx, *file.ManifestID)
+		if err != nil {
+			return fuse.ReadResultData([]byte{}), syscall.EIO
+		}
+
+		// Read all chunks
+		var data []byte
+		for _, hash := range manifest.Chunks {
+			chunk, err := n.db.GetChunk(ctx, hash)
+			if err != nil {
+				return fuse.ReadResultData([]byte{}), syscall.EIO
+			}
+			// Note: In full implementation, we'd use storage backend to get actual data
+			// This is a simplified version
+			_ = chunk
+		}
+		handle.data = data
+	}
+
+	// Return data from offset
+	if off >= int64(len(handle.data)) {
+		return fuse.ReadResultData([]byte{}), fs.OK
+	}
+
+	end := off + int64(len(dest))
+	if end > int64(len(handle.data)) {
+		end = int64(len(handle.data))
+	}
+
+	return fuse.ReadResultData(handle.data[off:end]), fs.OK
 }
 
 // Write implements fs.NodeWriter

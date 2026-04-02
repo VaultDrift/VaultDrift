@@ -68,6 +68,11 @@ func (m *Manager) Start(ctx context.Context) error {
 	// Start health check loop
 	go m.healthCheckLoop(ctx)
 
+	// Start auto-discovery if enabled
+	if m.config.AutoDiscovery {
+		go m.autoDiscoveryLoop(ctx)
+	}
+
 	// Announce to trusted peers
 	for _, peerURL := range m.config.TrustedPeers {
 		if err := m.discoverPeer(ctx, peerURL); err != nil {
@@ -384,7 +389,97 @@ func (m *Manager) sendHTTPRequest(ctx context.Context, url string, payload inter
 	return nil
 }
 
-// loadPeers loads peers from database
+// autoDiscoveryLoop periodically discovers new peers via trusted peers
+func (m *Manager) autoDiscoveryLoop(ctx context.Context) {
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+
+	// Run immediately on start
+	m.discoverViaPeers(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-m.stopChan:
+			return
+		case <-ticker.C:
+			m.discoverViaPeers(ctx)
+		}
+	}
+}
+
+// discoverViaPeers asks known peers for their peers
+func (m *Manager) discoverViaPeers(ctx context.Context) {
+	m.peersMu.RLock()
+	peers := make([]*db.FederationPeer, 0, len(m.peers))
+	for _, peer := range m.peers {
+		if peer.Status == "active" {
+			peers = append(peers, peer)
+		}
+	}
+	m.peersMu.RUnlock()
+
+	for _, peer := range peers {
+		go m.requestPeerList(ctx, peer)
+	}
+}
+
+// requestPeerList requests the peer list from a peer
+func (m *Manager) requestPeerList(ctx context.Context, peer *db.FederationPeer) {
+	url := fmt.Sprintf("%s/federation/v1/peers", peer.PublicURL)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return
+	}
+
+	req.Header.Set("X-Federation-ID", m.config.ServerID)
+
+	resp, err := m.httpClient.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return
+	}
+
+	var peerList []PeerAnnouncement
+	if err := json.NewDecoder(resp.Body).Decode(&peerList); err != nil {
+		return
+	}
+
+	// Add new peers
+	for _, announcement := range peerList {
+		// Skip self
+		if announcement.ServerID == m.config.ServerID {
+			continue
+		}
+
+		// Check if already known
+		if _, err := m.GetPeer(announcement.ServerID); err == nil {
+			continue // Already known
+		}
+
+		// Add new peer
+		newPeer := &db.FederationPeer{
+			ID:           announcement.ServerID,
+			Name:         announcement.Name,
+			PublicURL:    announcement.PublicURL,
+			PublicKey:    announcement.PublicKey,
+			Status:       "pending",
+			Capabilities: strings.Join(announcement.Capabilities, ","),
+		}
+
+		if err := m.AddPeer(ctx, newPeer); err != nil {
+			log.Printf("Failed to add discovered peer %s: %v", announcement.ServerID, err)
+		} else {
+			log.Printf("Discovered new peer via auto-discovery: %s (%s)", announcement.Name, announcement.PublicURL)
+		}
+	}
+}
 func (m *Manager) loadPeers(ctx context.Context) error {
 	peers, err := m.db.GetFederationPeers(ctx)
 	if err != nil {
