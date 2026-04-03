@@ -1,7 +1,6 @@
 package server
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"runtime/debug"
@@ -137,28 +136,6 @@ func SecurityHeadersMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
-}
-
-// RequestIDMiddleware adds a request ID to each request.
-func RequestIDMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestID := r.Header.Get("X-Request-ID")
-		if requestID == "" {
-			requestID = generateRequestID()
-		}
-
-		// Add to response header
-		w.Header().Set("X-Request-ID", requestID)
-
-		// Add to context for use in handlers
-		ctx := WithRequestID(r.Context(), requestID)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-// generateRequestID generates a simple request ID.
-func generateRequestID() string {
-	return fmt.Sprintf("%d", time.Now().UnixNano())
 }
 
 // RateLimitMiddleware simple rate limiting middleware.

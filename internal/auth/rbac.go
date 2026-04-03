@@ -15,7 +15,6 @@ import (
 var (
 	ErrPermissionDenied = errors.New("permission denied")
 	ErrInvalidResource  = errors.New("invalid resource")
-	ErrInvalidAction    = errors.New("invalid action")
 )
 
 // Permission represents a specific authorization grant.

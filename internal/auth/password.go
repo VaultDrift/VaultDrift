@@ -15,19 +15,12 @@ import (
 // Password hashing constants.
 const (
 	// Argon2id-style parameters (simulated with PBKDF2 + memory-hard mixing)
-	DefaultTimeCost   = 3
 	DefaultMemoryKB   = 65536 // 64MB
 	DefaultIterations = 3
-	DefaultSaltSize   = 16
-	DefaultKeySize    = 32
 )
 
-var (
-	// ErrInvalidHash is returned when the hash format is invalid.
-	ErrInvalidHash = errors.New("invalid password hash format")
-	// ErrMismatchedHash is returned when the password does not match.
-	ErrMismatchedHash = errors.New("password does not match")
-)
+// ErrInvalidHash is returned when the hash format is invalid.
+var ErrInvalidHash = errors.New("invalid password hash format")
 
 // HashPassword hashes a password using PBKDF2 with memory-hard mixing.
 // Returns a PHC-formatted string: $argon2id$v=19$m=65536,t=3,p=1$<salt>$<hash>

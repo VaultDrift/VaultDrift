@@ -6,6 +6,13 @@ dist/
 *.so
 *.dylib
 
+# Root-level compiled binaries
+/vaultdrift
+/vaultdrift.exe
+/vaultdrift-server
+/vaultdrift-cli
+/vaultdrift-desktop
+
 # Test artifacts
 *.test
 *.out
