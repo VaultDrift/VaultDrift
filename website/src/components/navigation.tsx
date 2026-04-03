@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
-import { Cloud, Menu, X, Github, Moon, Sun } from 'lucide-react'
+import { Cloud, Menu, X, Github } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navLinks = [

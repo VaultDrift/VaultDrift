@@ -1,4 +1,4 @@
-import { Shield, Lock, Zap, Server, Smartphone, Users, Key, Globe, Fingerprint, Clock, RefreshCw, HardDrive } from 'lucide-react'
+import { Shield, Lock, Zap, Server, Smartphone, Users, Key, Globe } from 'lucide-react'
 
 const features = [
   {
