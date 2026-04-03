@@ -43,11 +43,24 @@ func (h *TrashHandler) listTrash(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse pagination
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	if limit <= 0 || limit > 100 {
-		limit = 50
+	limitStr := r.URL.Query().Get("limit")
+	limit := 50
+	if limitStr != "" {
+		var err error
+		limit, err = strconv.Atoi(limitStr)
+		if err != nil || limit <= 0 || limit > 100 {
+			limit = 50
+		}
 	}
-	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	offsetStr := r.URL.Query().Get("offset")
+	offset := 0
+	if offsetStr != "" {
+		var err error
+		offset, err = strconv.Atoi(offsetStr)
+		if err != nil || offset < 0 {
+			offset = 0
+		}
+	}
 
 	items, err := h.vfs.ListTrash(r.Context(), userID)
 	if err != nil {

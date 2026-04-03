@@ -26,7 +26,11 @@ func (cli *CLI) handleShare(args []string) error {
 		switch args[i] {
 		case "--expires", "-e":
 			if i+1 < len(args) {
-				expiresDays, _ = strconv.Atoi(args[i+1])
+				var err error
+				expiresDays, err = strconv.Atoi(args[i+1])
+				if err != nil || expiresDays < 0 {
+					return fmt.Errorf("invalid expires value: %s", args[i+1])
+				}
 				i++
 			}
 		case "--password", "-p":
@@ -36,7 +40,11 @@ func (cli *CLI) handleShare(args []string) error {
 			}
 		case "--max-downloads", "-m":
 			if i+1 < len(args) {
-				maxDownloads, _ = strconv.Atoi(args[i+1])
+				var err error
+				maxDownloads, err = strconv.Atoi(args[i+1])
+				if err != nil || maxDownloads < 0 {
+					return fmt.Errorf("invalid max-downloads value: %s", args[i+1])
+				}
 				i++
 			}
 		}

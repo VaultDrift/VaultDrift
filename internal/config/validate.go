@@ -57,6 +57,10 @@ func Validate(cfg *Config) []error {
 	}
 
 	// Auth validation
+	if len(cfg.Auth.JWTSecret) < 32 {
+		errs = append(errs, fmt.Errorf("auth.jwt_secret must be at least 32 characters"))
+	}
+
 	if cfg.Auth.AccessTokenTTL <= 0 {
 		errs = append(errs, fmt.Errorf("auth.access_token_ttl must be positive"))
 	}

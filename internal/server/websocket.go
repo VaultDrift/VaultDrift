@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -88,27 +89,49 @@ type WebSocketServer struct {
 	unregister chan *WebSocketClient
 	broadcast  chan *WebSocketEvent
 
-	upgrader websocket.Upgrader
+	upgrader       websocket.Upgrader
+	allowedOrigins []string // Configured allowed origins for CORS
 }
 
 // NewWebSocketServer creates a new WebSocket server
-func NewWebSocketServer(vfsService *vfs.VFS, database *db.Manager, jwtSecret []byte) *WebSocketServer {
+func NewWebSocketServer(vfsService *vfs.VFS, database *db.Manager, jwtSecret []byte, allowedOrigins []string) *WebSocketServer {
 	s := &WebSocketServer{
-		vfs:        vfsService,
-		db:         database,
-		jwtSecret:  jwtSecret,
-		clients:    make(map[string]*WebSocketClient),
-		userIndex:  make(map[string][]string),
-		register:   make(chan *WebSocketClient),
-		unregister: make(chan *WebSocketClient),
-		broadcast:  make(chan *WebSocketEvent, 256),
+		vfs:            vfsService,
+		db:             database,
+		jwtSecret:      jwtSecret,
+		clients:        make(map[string]*WebSocketClient),
+		userIndex:      make(map[string][]string),
+		allowedOrigins: allowedOrigins,
+		register:       make(chan *WebSocketClient),
+		unregister:     make(chan *WebSocketClient),
+		broadcast:      make(chan *WebSocketEvent, 256),
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
 			CheckOrigin: func(r *http.Request) bool {
-				// Allow connections from any origin in development
-				// In production, this should be configured properly
-				return true
+				origin := r.Header.Get("Origin")
+				// If no origin header (non-browser client), allow
+				if origin == "" {
+					return true
+				}
+				// If no restrictions configured, allow all (development mode)
+				if len(allowedOrigins) == 0 || (len(allowedOrigins) == 1 && allowedOrigins[0] == "*") {
+					return true
+				}
+				// Check if origin is allowed
+				for _, allowed := range allowedOrigins {
+					if allowed == origin {
+						return true
+					}
+					// Support wildcard subdomains
+					if strings.HasPrefix(allowed, "*.") {
+						suffix := allowed[1:] // Remove *
+						if strings.HasSuffix(origin, suffix) {
+							return true
+						}
+					}
+				}
+				return false
 			},
 		},
 	}

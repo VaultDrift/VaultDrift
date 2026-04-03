@@ -2,6 +2,8 @@ package config
 
 import (
 	"bufio"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -278,15 +280,11 @@ func indexOf(slice []string, value string) int {
 
 // generateRandomSecret generates a random secret string
 func generateRandomSecret() string {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	const length = 32
-
-	result := make([]byte, length)
-	for i := range result {
-		idx := i % len(charset)
-		result[i] = charset[idx]
+	// Generate 32 random bytes for a 256-bit secret
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to a deterministic but unique value (should never happen)
+		return "vaultdrift-fallback-secret-do-not-use-in-production"
 	}
-
-	// In a real implementation, use crypto/rand
-	return string(result)
+	return base64.StdEncoding.EncodeToString(b)
 }

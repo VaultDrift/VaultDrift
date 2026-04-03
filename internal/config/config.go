@@ -23,10 +23,22 @@ type Config struct {
 
 // ServerConfig holds HTTP server configuration.
 type ServerConfig struct {
-	Host    string    `yaml:"host"`
-	Port    int       `yaml:"port"`
-	TLS     TLSConfig `yaml:"tls"`
-	BaseURL string    `yaml:"base_url"`
+	Host         string            `yaml:"host"`
+	Port         int               `yaml:"port"`
+	TLS          TLSConfig         `yaml:"tls"`
+	BaseURL      string            `yaml:"base_url"`
+	RateLimit    RateLimitConfig   `yaml:"rate_limit"`
+	ReadTimeout  time.Duration     `yaml:"read_timeout"`
+	WriteTimeout time.Duration     `yaml:"write_timeout"`
+	IdleTimeout  time.Duration     `yaml:"idle_timeout"`
+}
+
+// RateLimitConfig holds rate limiting configuration.
+type RateLimitConfig struct {
+	Enabled  bool          `yaml:"enabled"`
+	Requests int           `yaml:"requests"` // requests per window
+	Window   time.Duration `yaml:"window"`   // time window
+	Burst    int           `yaml:"burst"`    // burst size (optional)
 }
 
 // TLSConfig holds TLS certificate configuration.
@@ -158,6 +170,15 @@ func DefaultConfig() *Config {
 				Enabled:  true,
 				AutoCert: false,
 			},
+			RateLimit: RateLimitConfig{
+				Enabled:  true,
+				Requests: 100,
+				Window:   time.Minute,
+				Burst:    20,
+			},
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 30 * time.Second,
+			IdleTimeout:  120 * time.Second,
 		},
 		Storage: StorageConfig{
 			Backend: "local",

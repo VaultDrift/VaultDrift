@@ -152,7 +152,7 @@ func (a *App) cleanup() {
 	a.cancel()
 
 	if a.server != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = a.server.Stop(ctx)
 	}

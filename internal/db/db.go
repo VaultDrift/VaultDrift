@@ -157,3 +157,10 @@ func (m *Manager) Stats() sql.DBStats {
 func (m *Manager) Ping(ctx context.Context) error {
 	return m.db.PingContext(ctx)
 }
+
+// Path returns the database file path.
+func (m *Manager) Path() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.path
+}

@@ -205,8 +205,16 @@ func (h *Handler) handlePut(w http.ResponseWriter, r *http.Request, webdavPath s
 	existing, _ := h.getFileByPath(r.Context(), userID, webdavPath)
 	isNew := existing == nil
 
-	// Read upload content
-	data, err := io.ReadAll(r.Body)
+	// Read upload content with size limit
+	const maxUploadSize = 10 * 1024 * 1024 * 1024 // 10GB
+	if r.ContentLength > maxUploadSize {
+		h.sendError(w, http.StatusRequestEntityTooLarge, "File too large")
+		return
+	}
+
+	// Use LimitReader to prevent memory exhaustion
+	limitedReader := io.LimitReader(r.Body, maxUploadSize)
+	data, err := io.ReadAll(limitedReader)
 	if err != nil {
 		h.sendError(w, http.StatusInternalServerError, "Failed to read upload")
 		return

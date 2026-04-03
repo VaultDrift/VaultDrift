@@ -58,7 +58,7 @@ func TestWebSocketConnection(t *testing.T) {
 	}
 
 	// Create WebSocket server (without VFS and DB for now)
-	wsServer := NewWebSocketServer(nil, nil, []byte("test-secret"))
+	wsServer := NewWebSocketServer(nil, nil, []byte("test-secret"), nil) // nil allowedOrigins = allow all for tests
 
 	// Create test server
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -175,7 +175,7 @@ func TestWebSocketConnection(t *testing.T) {
 
 // TestWebSocketPingPong tests ping/pong messages
 func TestWebSocketPingPong(t *testing.T) {
-	wsServer := NewWebSocketServer(nil, nil, []byte("test-secret"))
+	wsServer := NewWebSocketServer(nil, nil, []byte("test-secret"), nil) // nil allowedOrigins = allow all for tests
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := wsServer.upgrader.Upgrade(w, r, nil)
@@ -243,7 +243,7 @@ func TestWebSocketPingPong(t *testing.T) {
 
 // TestWebSocketSubscription tests folder subscription
 func TestWebSocketSubscription(t *testing.T) {
-	wsServer := NewWebSocketServer(nil, nil, []byte("test-secret"))
+	wsServer := NewWebSocketServer(nil, nil, []byte("test-secret"), nil) // nil allowedOrigins = allow all for tests
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := wsServer.upgrader.Upgrade(w, r, nil)
@@ -344,7 +344,7 @@ func TestWebSocketSubscription(t *testing.T) {
 
 // TestWebSocketEventBroadcast tests event broadcasting
 func TestWebSocketEventBroadcast(t *testing.T) {
-	wsServer := NewWebSocketServer(nil, nil, []byte("test-secret"))
+	wsServer := NewWebSocketServer(nil, nil, []byte("test-secret"), nil) // nil allowedOrigins = allow all for tests
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := wsServer.upgrader.Upgrade(w, r, nil)
@@ -431,7 +431,7 @@ func TestWebSocketEventBroadcast(t *testing.T) {
 
 // TestWebSocketBroadcastToUser tests user-specific broadcasting
 func TestWebSocketBroadcastToUser(t *testing.T) {
-	wsServer := NewWebSocketServer(nil, nil, []byte("test-secret"))
+	wsServer := NewWebSocketServer(nil, nil, []byte("test-secret"), nil) // nil allowedOrigins = allow all for tests
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := wsServer.upgrader.Upgrade(w, r, nil)

@@ -1,0 +1,49 @@
+# VaultDrift Docker Configuration
+# TLS yok - HTTP mod (container içinde TLS karmaşık)
+
+server:
+  host: 0.0.0.0
+  port: 8080
+  base_url: http://localhost:8080
+  tls:
+    enabled: false
+
+storage:
+  backend: local
+  local:
+    data_dir: /data/storage
+
+database:
+  path: /data/vaultdrift.db
+
+auth:
+  jwt_secret: CHANGE_THIS_TO_A_RANDOM_STRING_32_CHARS_MINIMUM
+  access_token_ttl: 15m
+  refresh_token_ttl: 7d
+  totp_enabled: true
+
+sync:
+  chunk_size_min: 262144
+  chunk_size_avg: 1048576
+  chunk_size_max: 4194304
+  max_concurrent_transfers: 4
+  websocket_enabled: true
+
+encryption:
+  enabled: true
+  zero_knowledge: true
+
+sharing:
+  public_links_enabled: true
+  max_expiry_days: 90
+  default_expiry_days: 7
+
+users:
+  registration_enabled: false
+  default_quota: 0
+
+logging:
+  level: info
+  file: /data/logs/vaultdrift.log
+  audit: true
+  format: json

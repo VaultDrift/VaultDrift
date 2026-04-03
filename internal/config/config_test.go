@@ -104,6 +104,8 @@ func TestValidate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := DefaultConfig()
+			// Set a valid JWT secret for testing
+			cfg.Auth.JWTSecret = "test-jwt-secret-that-is-at-least-32-characters-long"
 			tt.modify(cfg)
 			errs := Validate(cfg)
 			gotErr := len(errs) > 0

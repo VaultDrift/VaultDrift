@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
@@ -41,7 +42,7 @@ func NewIPFSBackend(cfg configpkg.IPFSConfig) (*IPFSBackend, error) {
 	}
 
 	// Test connection
-	ctx, cancel := context.WithTimeout(context.Background(), 10)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	// Try to get node ID to verify connection

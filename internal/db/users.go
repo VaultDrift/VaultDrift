@@ -412,7 +412,29 @@ func (m *Manager) GetUserCountByStatus(ctx context.Context, status string) (int,
 	return count, nil
 }
 
-// Helper functions
+// UpdateUserPassword updates a user's password hash.
+func (m *Manager) UpdateUserPassword(ctx context.Context, id string, passwordHash string) error {
+	return m.UpdatePassword(ctx, id, passwordHash)
+}
+
+// CountUsersByStatus counts users by status (empty string for all).
+func (m *Manager) CountUsersByStatus(ctx context.Context, status string) (int64, error) {
+	if status == "" {
+		var count int64
+		err := m.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users").Scan(&count)
+		if err != nil {
+			return 0, fmt.Errorf("failed to count users: %w", err)
+		}
+		return count, nil
+	}
+
+	var count int64
+	err := m.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE status = ?", status).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count users by status: %w", err)
+	}
+	return count, nil
+}
 func boolToInt(b bool) int {
 	if b {
 		return 1

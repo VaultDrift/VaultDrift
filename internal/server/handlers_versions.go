@@ -97,7 +97,12 @@ func (h *VersionHandler) incrementVersion(w http.ResponseWriter, r *http.Request
 	var req struct {
 		Comment string `json:"comment,omitempty"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		// Optional body, ignore parse errors but close body
+		_ = r.Body.Close()
+	}
+
+	_ = r.Body.Close()
 
 	// Create versioning service and increment version
 	vs := vfs.NewVersioningService(h.vfs, nil) // We'll need to pass db properly

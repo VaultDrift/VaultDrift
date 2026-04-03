@@ -398,7 +398,8 @@ func isValidName(name string) bool {
 	}
 	// Check for invalid characters
 	for _, c := range name {
-		if c == '/' || c == '\x00' {
+		// Reject path separators, null bytes, newlines, and control characters
+		if c == '/' || c == '\x00' || c == '\n' || c == '\r' || c == '\t' || c < 32 {
 			return false
 		}
 	}

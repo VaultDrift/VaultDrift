@@ -65,13 +65,18 @@ func TestHealthEndpoint(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", w.Code)
 	}
 
-	var response map[string]string
+	var response map[string]any
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
 
-	if response["status"] != "healthy" {
-		t.Errorf("Expected status 'healthy', got %s", response["status"])
+	if response["status"] != "healthy" && response["status"] != "degraded" {
+		t.Errorf("Expected status 'healthy' or 'degraded', got %s", response["status"])
+	}
+
+	// Check that system info is present
+	if _, ok := response["system"]; !ok {
+		t.Error("Expected 'system' field in health response")
 	}
 }
 

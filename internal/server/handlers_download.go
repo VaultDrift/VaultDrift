@@ -117,7 +117,7 @@ func (h *DownloadHandler) handleFullDownload(w http.ResponseWriter, r *http.Requ
 	// Set headers
 	w.Header().Set("Content-Type", file.MimeType)
 	w.Header().Set("Content-Length", strconv.FormatInt(file.SizeBytes, 10))
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", file.Name))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", sanitizeFilename(file.Name)))
 	w.Header().Set("Accept-Ranges", "bytes")
 	w.Header().Set("Last-Modified", file.UpdatedAt.Format(http.TimeFormat))
 	if file.Checksum != nil {
@@ -241,7 +241,7 @@ func (h *DownloadHandler) handleRangeRequest(w http.ResponseWriter, r *http.Requ
 	w.Header().Set("Content-Length", strconv.FormatInt(contentLength, 10))
 	w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, file.SizeBytes))
 	w.Header().Set("Accept-Ranges", "bytes")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", file.Name))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", sanitizeFilename(file.Name)))
 
 	w.WriteHeader(http.StatusPartialContent)
 
@@ -449,7 +449,7 @@ func (h *DownloadHandler) streamFile(w http.ResponseWriter, r *http.Request) {
 	// Set inline disposition for streaming (browser will display/play)
 	w.Header().Set("Content-Type", file.MimeType)
 	w.Header().Set("Content-Length", strconv.FormatInt(file.SizeBytes, 10))
-	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", file.Name))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", sanitizeFilename(file.Name)))
 	w.Header().Set("Accept-Ranges", "bytes")
 
 	// Handle Range header for media seeking

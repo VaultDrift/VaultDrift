@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -36,11 +37,15 @@ type Server struct {
 	rbac       *auth.RBAC
 	events     *EventNotifier
 	federation *federation.Manager
+	metrics    *Metrics
 }
 
 // NewServer creates a new HTTP server.
 func NewServer(cfg config.ServerConfig, database *db.Manager, authService *auth.Service, vfsService *vfs.VFS, store storage.Backend, jwtSecret []byte, fed *federation.Manager) *Server {
 	router := http.NewServeMux()
+
+	// Create metrics collector
+	metrics := NewMetrics(database)
 
 	s := &Server{
 		router:     router,
@@ -53,6 +58,7 @@ func NewServer(cfg config.ServerConfig, database *db.Manager, authService *auth.
 		rbac:       auth.NewRBAC(database),
 		events:     NewEventNotifier(vfsService, database),
 		federation: fed,
+		metrics:    metrics,
 	}
 
 	// Setup routes
@@ -111,6 +117,11 @@ func (s *Server) setupRoutes() {
 	// Health check
 	s.router.HandleFunc("GET /health", s.handleHealth)
 	s.router.HandleFunc("GET /ready", s.handleReady)
+
+	// Metrics endpoints (public for monitoring, should be protected by reverse proxy)
+	s.router.Handle("GET /metrics/json", s.metrics.MetricsHandler())
+	s.router.Handle("GET /metrics/prometheus", s.metrics.PrometheusHandler())
+	s.router.Handle("GET /metrics", s.metrics.PrometheusHandler()) // Default to Prometheus format
 
 	// Auth handlers (public)
 	authHandler := NewAuthHandler(s.authSvc)
@@ -186,17 +197,57 @@ func (s *Server) setupRoutes() {
 func (s *Server) wrapMiddleware(handler http.Handler) http.Handler {
 	// Apply middleware in reverse order (last applied is first executed)
 	handler = RecoveryMiddleware(handler)
+
+	// Add rate limiting if enabled
+	if s.config.RateLimit.Enabled {
+		rateLimiter := NewRateLimitMiddleware(
+			s.config.RateLimit.Requests,
+			s.config.RateLimit.Window,
+		)
+		handler = rateLimiter.Limit(handler)
+	}
+
 	handler = LoggingMiddleware(handler)
 	handler = CORSMiddleware(handler, nil)
 	handler = SecurityHeadersMiddleware(handler)
 	return handler
 }
 
-// handleHealth returns health status.
+// handleHealth returns detailed health status.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{
-		"status": "healthy",
-	})
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+
+	health := map[string]interface{}{
+		"status":    "healthy",
+		"version":   "0.1.0",
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"system": map[string]interface{}{
+			"goroutines": runtime.NumGoroutine(),
+			"memory": map[string]uint64{
+				"alloc":       memStats.Alloc,
+				"total_alloc": memStats.TotalAlloc,
+				"sys":         memStats.Sys,
+				"heap_alloc":  memStats.HeapAlloc,
+				"heap_inuse":  memStats.HeapInuse,
+			},
+			"gc_count": memStats.NumGC,
+		},
+		"dependencies": map[string]string{
+			"database":   "ok",
+			"storage":    "ok",
+			"web_socket": "ok",
+		},
+	}
+
+	// Check database
+	if err := s.db.Ping(r.Context()); err != nil {
+		health["status"] = "degraded"
+		deps := health["dependencies"].(map[string]string)
+		deps["database"] = "error: " + err.Error()
+	}
+
+	writeJSON(w, http.StatusOK, health)
 }
 
 // handleReady returns readiness status.

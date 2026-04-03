@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"net/http"
+	"time"
 )
 
 // CLI represents the command-line interface
@@ -229,8 +230,9 @@ func (cli *CLI) handleStatus() error {
 	fmt.Printf("Username: %s\n", cli.config.Username)
 	fmt.Printf("Logged In: %v\n", cli.config.Token != "")
 
-	// Test connection
-	resp, err := http.Get(cli.config.ServerURL + "/health")
+	// Test connection with timeout
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(cli.config.ServerURL + "/health")
 	if err != nil {
 		fmt.Printf("Server Status: Offline (%v)\n", err)
 	} else {

@@ -199,7 +199,7 @@ func (h *PublicShareHandler) streamSharedFile(w http.ResponseWriter, r *http.Req
 	// Set inline disposition for preview
 	w.Header().Set("Content-Type", file.MimeType)
 	w.Header().Set("Content-Length", strconv.FormatInt(file.SizeBytes, 10))
-	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", file.Name))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", sanitizeFilename(file.Name)))
 	w.Header().Set("Accept-Ranges", "bytes")
 
 	// Handle Range for seeking
@@ -244,7 +244,7 @@ func (h *PublicShareHandler) validateShare(r *http.Request, token string) (*db.S
 func (h *PublicShareHandler) handleFullDownload(w http.ResponseWriter, r *http.Request, file *db.File, manifest *db.Manifest) {
 	w.Header().Set("Content-Type", file.MimeType)
 	w.Header().Set("Content-Length", strconv.FormatInt(file.SizeBytes, 10))
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", file.Name))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", sanitizeFilename(file.Name)))
 	w.Header().Set("Accept-Ranges", "bytes")
 
 	w.WriteHeader(http.StatusOK)

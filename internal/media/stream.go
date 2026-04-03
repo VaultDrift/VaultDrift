@@ -165,8 +165,12 @@ func (h *StreamHandler) handlePlaylist(w http.ResponseWriter, r *http.Request) {
 	playlistPath := filepath.Join(h.cacheDir, fileID, "playlist.m3u8") // #nosec G703 - fileID sanitized above
 
 	if _, err := os.Stat(playlistPath); os.IsNotExist(err) { // #nosec G703
-		// Generate HLS on-demand (async) - intentionally uses Background context for independent operation
-		go h.generateHLS(context.Background(), fileID)
+		// Generate HLS on-demand (async) with timeout to prevent resource leaks
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+			defer cancel()
+			_ = h.generateHLS(ctx, fileID)
+		}()
 		http.Error(w, "Stream not ready, generating...", http.StatusAccepted)
 		return
 	}
