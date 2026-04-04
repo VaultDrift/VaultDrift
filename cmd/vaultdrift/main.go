@@ -16,7 +16,9 @@ import (
 	"github.com/vaultdrift/vaultdrift/internal/federation"
 	"github.com/vaultdrift/vaultdrift/internal/server"
 	"github.com/vaultdrift/vaultdrift/internal/storage"
+	"github.com/vaultdrift/vaultdrift/internal/tracing"
 	"github.com/vaultdrift/vaultdrift/internal/vfs"
+	"github.com/vaultdrift/vaultdrift/internal/worker"
 )
 
 func main() {
@@ -37,6 +39,14 @@ func main() {
 	cfg, err := loadConfig(*configPath, *dataDir, *host, *port)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Validate configuration
+	if errs := config.Validate(cfg); len(errs) > 0 {
+		for _, e := range errs {
+			log.Printf("Config error: %v", e)
+		}
+		log.Fatalf("Fix configuration errors above and restart")
 	}
 
 	// Initialize database
@@ -74,6 +84,29 @@ func main() {
 		fedMgr = nil
 	}
 
+	// Initialize tracing (if enabled)
+	var tracingProvider *tracing.Provider
+	if cfg.Tracing.Enabled {
+		traceProvider, err := tracing.NewProvider(tracing.Config{
+			Enabled:      true,
+			Exporter:     cfg.Tracing.Exporter,
+			OTLPEndpoint: cfg.Tracing.OTLPEndpoint,
+			ServiceName:  cfg.Tracing.ServiceName,
+			SampleRate:   cfg.Tracing.SampleRate,
+		})
+		if err != nil {
+			log.Printf("Failed to initialize tracing: %v", err)
+		} else {
+			tracingProvider = traceProvider
+			log.Println("Tracing enabled:", cfg.Tracing.Exporter)
+		}
+	}
+
+	// Initialize worker manager (background GC, trash cleanup)
+	workerMgr := worker.NewManager(database, store)
+	workerMgr.Start()
+	defer workerMgr.Stop()
+
 	// Create server
 	srv := server.NewServer(cfg.Server, database, authSvc, vfsService, store, []byte(cfg.Auth.JWTSecret), fedMgr)
 
@@ -84,6 +117,16 @@ func main() {
 	go func() {
 		<-sigChan
 		log.Println("Shutting down...")
+
+		// Shutdown tracing provider
+		if tracingProvider != nil {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if err := tracingProvider.Shutdown(shutdownCtx); err != nil {
+				log.Printf("Error shutting down tracing: %v", err)
+			}
+			cancel()
+		}
+
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := srv.Stop(shutdownCtx); err != nil {

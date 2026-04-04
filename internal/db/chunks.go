@@ -80,7 +80,7 @@ func (m *Manager) IncrementRefCount(ctx context.Context, hash string) error {
 // DecrementRefCount decrements the reference count of a chunk.
 func (m *Manager) DecrementRefCount(ctx context.Context, hash string) error {
 	result, err := m.db.ExecContext(ctx,
-		"UPDATE chunks SET ref_count = ref_count - 1 WHERE hash = ?",
+		"UPDATE chunks SET ref_count = ref_count - 1 WHERE hash = ? AND ref_count > 0",
 		hash,
 	)
 	if err != nil {
@@ -167,4 +167,19 @@ func (m *Manager) GetTotalChunkSize(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("failed to get total chunk size: %w", err)
 	}
 	return size, nil
+}
+
+// UserOwnsChunk checks if a chunk hash belongs to any file owned by the given user.
+// Uses json_each for exact matching against the JSON array in the chunks column.
+func (m *Manager) UserOwnsChunk(ctx context.Context, userID, chunkHash string) (bool, error) {
+	var count int
+	err := m.db.QueryRowContext(ctx, `
+		SELECT COUNT(1) FROM manifests m
+		JOIN files f ON f.id = m.file_id, json_each(m.chunks) AS je
+		WHERE f.user_id = ? AND je.value = ?
+		LIMIT 1`, userID, chunkHash).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("failed to check chunk ownership: %w", err)
+	}
+	return count > 0, nil
 }

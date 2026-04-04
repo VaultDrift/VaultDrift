@@ -3,7 +3,6 @@ package server
 import (
 	"archive/tar"
 	"compress/gzip"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -49,10 +48,8 @@ func (h *BackupHandler) RegisterRoutes(mux *http.ServeMux, auth func(http.Handle
 
 // createBackup creates a new database backup.
 func (h *BackupHandler) createBackup(w http.ResponseWriter, r *http.Request) {
-	// Check admin role (would be checked by middleware in real implementation)
-	userID := GetUserID(r)
-	if userID == "" {
-		http.Error(w, `{"error":"Unauthorized"}`, http.StatusUnauthorized)
+	if !IsAdmin(r) {
+		ErrorResponse(w, http.StatusForbidden, "Admin access required")
 		return
 	}
 
@@ -70,7 +67,7 @@ func (h *BackupHandler) createBackup(w http.ResponseWriter, r *http.Request) {
 
 	// Create backup archive
 	if err := h.createBackupArchive(backupPath); err != nil {
-		ErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to create backup: %v", err))
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -141,9 +138,8 @@ func (h *BackupHandler) createBackupArchive(backupPath string) error {
 
 // listBackups lists available backups.
 func (h *BackupHandler) listBackups(w http.ResponseWriter, r *http.Request) {
-	userID := GetUserID(r)
-	if userID == "" {
-		http.Error(w, `{"error":"Unauthorized"}`, http.StatusUnauthorized)
+	if !IsAdmin(r) {
+		ErrorResponse(w, http.StatusForbidden, "Admin access required")
 		return
 	}
 
@@ -188,9 +184,8 @@ func (h *BackupHandler) listBackups(w http.ResponseWriter, r *http.Request) {
 
 // downloadBackup serves a backup file for download.
 func (h *BackupHandler) downloadBackup(w http.ResponseWriter, r *http.Request) {
-	userID := GetUserID(r)
-	if userID == "" {
-		http.Error(w, `{"error":"Unauthorized"}`, http.StatusUnauthorized)
+	if !IsAdmin(r) {
+		ErrorResponse(w, http.StatusForbidden, "Admin access required")
 		return
 	}
 
@@ -215,7 +210,11 @@ func (h *BackupHandler) downloadBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	absBackupDir, _ := filepath.Abs(filepath.Join(h.dataDir, "backups"))
+	absBackupDir, err := filepath.Abs(filepath.Join(h.dataDir, "backups"))
+	if err != nil {
+		ErrorResponse(w, http.StatusInternalServerError, "Invalid backup directory path")
+		return
+	}
 	if !strings.HasPrefix(absPath, absBackupDir) {
 		ErrorResponse(w, http.StatusForbidden, "Access denied")
 		return
@@ -235,7 +234,7 @@ func (h *BackupHandler) downloadBackup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/gzip")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, sanitizeFilename(filename)))
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", info.Size()))
 
 	io.Copy(w, file)
@@ -243,9 +242,8 @@ func (h *BackupHandler) downloadBackup(w http.ResponseWriter, r *http.Request) {
 
 // deleteBackup removes a backup file.
 func (h *BackupHandler) deleteBackup(w http.ResponseWriter, r *http.Request) {
-	userID := GetUserID(r)
-	if userID == "" {
-		http.Error(w, `{"error":"Unauthorized"}`, http.StatusUnauthorized)
+	if !IsAdmin(r) {
+		ErrorResponse(w, http.StatusForbidden, "Admin access required")
 		return
 	}
 
@@ -264,8 +262,16 @@ func (h *BackupHandler) deleteBackup(w http.ResponseWriter, r *http.Request) {
 	backupPath := filepath.Join(h.dataDir, "backups", filename)
 
 	// Verify path is within backup directory
-	absPath, _ := filepath.Abs(backupPath)
-	absBackupDir, _ := filepath.Abs(filepath.Join(h.dataDir, "backups"))
+	absPath, err := filepath.Abs(backupPath)
+	if err != nil {
+		ErrorResponse(w, http.StatusInternalServerError, "Invalid path")
+		return
+	}
+	absBackupDir, err := filepath.Abs(filepath.Join(h.dataDir, "backups"))
+	if err != nil {
+		ErrorResponse(w, http.StatusInternalServerError, "Invalid backup directory path")
+		return
+	}
 	if !strings.HasPrefix(absPath, absBackupDir) {
 		ErrorResponse(w, http.StatusForbidden, "Access denied")
 		return
@@ -283,9 +289,8 @@ func (h *BackupHandler) deleteBackup(w http.ResponseWriter, r *http.Request) {
 
 // restoreBackup restores database from a backup.
 func (h *BackupHandler) restoreBackup(w http.ResponseWriter, r *http.Request) {
-	userID := GetUserID(r)
-	if userID == "" {
-		http.Error(w, `{"error":"Unauthorized"}`, http.StatusUnauthorized)
+	if !IsAdmin(r) {
+		ErrorResponse(w, http.StatusForbidden, "Admin access required")
 		return
 	}
 
@@ -293,7 +298,7 @@ func (h *BackupHandler) restoreBackup(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Filename string `json:"filename"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := DecodeJSON(r, &req); err != nil {
 		ErrorResponse(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -312,8 +317,16 @@ func (h *BackupHandler) restoreBackup(w http.ResponseWriter, r *http.Request) {
 	backupPath := filepath.Join(h.dataDir, "backups", req.Filename)
 
 	// Verify path is within backup directory
-	absPath, _ := filepath.Abs(backupPath)
-	absBackupDir, _ := filepath.Abs(filepath.Join(h.dataDir, "backups"))
+	absPath, err := filepath.Abs(backupPath)
+	if err != nil {
+		ErrorResponse(w, http.StatusInternalServerError, "Invalid path")
+		return
+	}
+	absBackupDir, err := filepath.Abs(filepath.Join(h.dataDir, "backups"))
+	if err != nil {
+		ErrorResponse(w, http.StatusInternalServerError, "Invalid backup directory path")
+		return
+	}
 	if !strings.HasPrefix(absPath, absBackupDir) {
 		ErrorResponse(w, http.StatusForbidden, "Access denied")
 		return
@@ -325,11 +338,30 @@ func (h *BackupHandler) restoreBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Implement actual restore (would require stopping writes, restoring, restarting)
-	// For now, return warning
+	// Restore the database from the backup archive.
+	currentDBPath := h.db.Path()
+	if currentDBPath == "" {
+		ErrorResponse(w, http.StatusInternalServerError, "Cannot determine database path")
+		return
+	}
+
+	// Create a safety snapshot of the current DB before overwriting
+	safetyPath := currentDBPath + ".pre-restore"
+	if err := copyFile(currentDBPath, safetyPath); err != nil {
+		ErrorResponse(w, http.StatusInternalServerError, "Failed to create safety backup before restore")
+		return
+	}
+
+	// Extract the backup archive over the current database file
+	if err := h.extractDatabaseFromArchive(backupPath, currentDBPath); err != nil {
+		_ = copyFile(safetyPath, currentDBPath)
+		InternalErrorResponse(w, err)
+		return
+	}
+
 	SuccessResponse(w, map[string]string{
-		"message": "Restore endpoint - manual restore required. Use backup file from: " + backupPath,
-		"warning": "Database restore requires server restart. Please follow manual restore procedure.",
+		"message":       "Database restored successfully. Server restart is required for changes to take effect.",
+		"safety_backup": safetyPath,
 	})
 }
 
@@ -338,10 +370,64 @@ func containsPathTraversal(filename string) bool {
 	return strings.Contains(filename, "..") || strings.Contains(filename, "/") || strings.Contains(filename, "\\")
 }
 
-// GetUserID extracts user ID from request context.
-func GetUserID(r *http.Request) string {
-	if userID, ok := r.Context().Value("user_id").(string); ok {
-		return userID
+// copyFile copies src to dst.
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
 	}
-	return ""
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Sync()
+}
+
+// extractDatabaseFromArchive extracts vaultdrift.db from a tar.gz backup.
+func (h *BackupHandler) extractDatabaseFromArchive(archivePath, dbPath string) error {
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return fmt.Errorf("failed to open archive: %w", err)
+	}
+	defer f.Close()
+
+	gr, err := gzip.NewReader(f)
+	if err != nil {
+		return fmt.Errorf("failed to create gzip reader: %w", err)
+	}
+	defer gr.Close()
+
+	tr := tar.NewReader(gr)
+
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read tar: %w", err)
+		}
+
+		if header.Name == "vaultdrift.db" {
+			out, err := os.Create(dbPath)
+			if err != nil {
+				return fmt.Errorf("failed to create db file: %w", err)
+			}
+			defer out.Close()
+
+			if _, err := io.Copy(out, tr); err != nil {
+				return fmt.Errorf("failed to write db file: %w", err)
+			}
+			return out.Sync()
+		}
+	}
+
+	return fmt.Errorf("vaultdrift.db not found in archive")
 }

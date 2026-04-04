@@ -2,11 +2,15 @@ package vfs
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/vaultdrift/vaultdrift/internal/db"
+	syncpkg "github.com/vaultdrift/vaultdrift/internal/sync"
 )
 
 // VFS implements a virtual filesystem layer on top of the database.
@@ -184,13 +188,22 @@ func (v *VFS) Restore(ctx context.Context, fileID string) error {
 	return nil
 }
 
-// ListTrash lists trashed files for a user.
-func (v *VFS) ListTrash(ctx context.Context, userID string) ([]*db.File, error) {
-	files, err := v.db.ListTrash(ctx, userID)
+// ListTrash lists trashed files for a user with pagination.
+func (v *VFS) ListTrash(ctx context.Context, userID string, limit, offset int) ([]*db.File, error) {
+	files, err := v.db.ListTrash(ctx, userID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list trash: %w", err)
 	}
 	return files, nil
+}
+
+// CountTrash returns the total number of trashed files for a user.
+func (v *VFS) CountTrash(ctx context.Context, userID string) (int64, error) {
+	count, err := v.db.CountTrash(ctx, userID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count trash: %w", err)
+	}
+	return count, nil
 }
 
 // Search searches files by name for a user.
@@ -204,6 +217,62 @@ func (v *VFS) Search(ctx context.Context, userID, query string, limit int) ([]*d
 		return nil, fmt.Errorf("failed to search: %w", err)
 	}
 	return files, nil
+}
+
+// ListAllFiles recursively walks the directory tree for a user and returns
+// every file and folder as syncpkg.FileInfo entries with full paths.
+func (v *VFS) ListAllFiles(ctx context.Context, userID string) ([]syncpkg.FileInfo, error) {
+	var result []syncpkg.FileInfo
+	if err := v.walkDir(ctx, userID, nil, "/", &result); err != nil {
+		return nil, fmt.Errorf("failed to list all files: %w", err)
+	}
+	return result, nil
+}
+
+// walkDir recursively lists all entries under the given parentID, appending
+// them to result with the provided path prefix.
+func (v *VFS) walkDir(ctx context.Context, userID string, parentID *string, prefix string, result *[]syncpkg.FileInfo) error {
+	opts := db.ListOpts{Limit: 10000}
+	entries, err := v.db.ListDirectory(ctx, userID, parentID, opts)
+	if err != nil {
+		return fmt.Errorf("list directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		path := prefix + entry.Name
+
+		if entry.Type == "folder" {
+			*result = append(*result, syncpkg.FileInfo{
+				Path:    path,
+				IsFile:  false,
+				Size:    0,
+				ModTime: entry.UpdatedAt.Unix(),
+				Hash:    hashOf(path),
+			})
+			if err := v.walkDir(ctx, userID, &entry.ID, path+"/", result); err != nil {
+				return err
+			}
+		} else {
+			checksum := ""
+			if entry.Checksum != nil {
+				checksum = *entry.Checksum
+			}
+			*result = append(*result, syncpkg.FileInfo{
+				Path:    path,
+				IsFile:  true,
+				Size:    entry.SizeBytes,
+				ModTime: entry.UpdatedAt.Unix(),
+				Hash:    checksum,
+			})
+		}
+	}
+	return nil
+}
+
+// hashOf returns the hex-encoded SHA-256 hash of s.
+func hashOf(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(h[:])
 }
 
 // Recent returns recently modified files for a user.
@@ -407,7 +476,12 @@ func isValidName(name string) bool {
 }
 
 func generateID(prefix string) string {
-	return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to timestamp if crypto/rand fails
+		return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
+	}
+	return fmt.Sprintf("%s_%x", prefix, b)
 }
 
 func joinPath(parts []string) string {

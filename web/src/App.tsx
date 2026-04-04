@@ -1,7 +1,9 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import { Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { Layout } from '@/components/Layout';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { LoginPage } from '@/pages/Login';
 import { FilesPage } from '@/pages/Files';
 import { SharedPage } from '@/pages/Shared';
@@ -10,27 +12,43 @@ import { TrashPage } from '@/pages/Trash';
 import { SettingsPage } from '@/pages/Settings';
 import { AdminPage } from '@/pages/Admin';
 import { SyncPage } from '@/pages/Sync';
+import { NotFoundPage } from '@/pages/NotFound';
 
 function App() {
-  const { isAuthenticated, fetchUser, user } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
+  const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
-    // Try to restore session on mount
     const token = localStorage.getItem('access_token');
-    if (token && !isAuthenticated) {
-      fetchUser();
+    if (token) {
+      useAuthStore.getState().fetchUser().finally(() => setIsInitializing(false));
+    } else {
+      setIsInitializing(false);
     }
-  }, [fetchUser, isAuthenticated]);
+  }, []);
+
+  if (isInitializing) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin" />
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
-    return <LoginPage />;
+    return (
+      <ErrorBoundary>
+        <LoginPage />
+      </ErrorBoundary>
+    );
   }
 
   const isAdmin = user?.role === 'admin';
 
   return (
     <Layout>
-      <Routes>
+      <ErrorBoundary>
+        <Routes>
         <Route path="/" element={<Navigate to="/files" replace />} />
         <Route path="/files" element={<FilesPage />} />
         <Route path="/files/:folderId" element={<FilesPage />} />
@@ -40,8 +58,9 @@ function App() {
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/sync" element={<SyncPage />} />
         {isAdmin && <Route path="/admin" element={<AdminPage />} />}
-        <Route path="*" element={<Navigate to="/files" replace />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
+      </ErrorBoundary>
     </Layout>
   );
 }

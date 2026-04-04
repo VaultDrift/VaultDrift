@@ -3,11 +3,12 @@ package server
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/vaultdrift/vaultdrift/internal/auth"
+	"github.com/vaultdrift/vaultdrift/internal/config"
 	"github.com/vaultdrift/vaultdrift/internal/db"
 	"github.com/vaultdrift/vaultdrift/internal/vfs"
 )
@@ -17,14 +18,16 @@ type ShareHandler struct {
 	vfs    *vfs.VFS
 	db     *db.Manager
 	events *EventNotifier
+	config config.SharingConfig
 }
 
 // NewShareHandler creates a new share handler.
-func NewShareHandler(vfsService *vfs.VFS, database *db.Manager, events *EventNotifier) *ShareHandler {
+func NewShareHandler(vfsService *vfs.VFS, database *db.Manager, events *EventNotifier, cfg config.SharingConfig) *ShareHandler {
 	return &ShareHandler{
 		vfs:    vfsService,
 		db:     database,
 		events: events,
+		config: cfg,
 	}
 }
 
@@ -85,7 +88,7 @@ func (h *ShareHandler) createShare(w http.ResponseWriter, r *http.Request) {
 			ErrorResponse(w, http.StatusNotFound, "File not found")
 			return
 		}
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -95,7 +98,7 @@ func (h *ShareHandler) createShare(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req createShareRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := DecodeJSON(r, &req); err != nil {
 		ErrorResponse(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -103,6 +106,23 @@ func (h *ShareHandler) createShare(w http.ResponseWriter, r *http.Request) {
 	// Validate share type
 	if req.ShareType != "link" && req.ShareType != "user" {
 		ErrorResponse(w, http.StatusBadRequest, "Share type must be 'link' or 'user'")
+		return
+	}
+	// Enforce sharing config
+	if req.ShareType == "link" && !h.config.PublicLinksEnabled {
+		ErrorResponse(w, http.StatusForbidden, "Public links are disabled")
+		return
+	}
+	if h.config.PasswordRequired && (req.Password == nil || *req.Password == "") {
+		ErrorResponse(w, http.StatusBadRequest, "Password is required for shares")
+		return
+	}
+	if h.config.MaxExpiryDays > 0 && req.ExpiresDays != nil && *req.ExpiresDays > h.config.MaxExpiryDays {
+		ErrorResponse(w, http.StatusBadRequest, "Expiry exceeds maximum allowed days")
+		return
+	}
+	if h.config.MaxDownloadLimit > 0 && req.MaxDownloads != nil && *req.MaxDownloads > h.config.MaxDownloadLimit {
+		ErrorResponse(w, http.StatusBadRequest, "Download limit exceeds maximum allowed")
 		return
 	}
 
@@ -181,8 +201,7 @@ func (h *ShareHandler) createShare(w http.ResponseWriter, r *http.Request) {
 		shareURL = &url
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	SuccessResponse(w, map[string]any{
+	CreatedResponse(w, map[string]any{
 		"share":     share,
 		"share_url": shareURL,
 	})
@@ -218,7 +237,7 @@ func (h *ShareHandler) listShares(w http.ResponseWriter, r *http.Request) {
 			ErrorResponse(w, http.StatusNotFound, "File not found")
 			return
 		}
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -257,7 +276,7 @@ func (h *ShareHandler) listMyShares(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// listReceivedShares lists shares shared with the current user.
+// listReceivedShares lists shares shared with the current user, enriched with file names and sharer usernames.
 func (h *ShareHandler) listReceivedShares(w http.ResponseWriter, r *http.Request) {
 	userID := GetUserIDFromRequest(r)
 	if userID == "" {
@@ -271,8 +290,29 @@ func (h *ShareHandler) listReceivedShares(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Enrich with file name and sharer username
+	type ReceivedShareDTO struct {
+		*db.Share
+		FileName string `json:"file_name"`
+		SharedBy string `json:"shared_by"`
+	}
+
+	results := make([]ReceivedShareDTO, 0, len(shares))
+	for _, s := range shares {
+		dto := ReceivedShareDTO{Share: s}
+
+		if file, err := h.db.GetFileByID(r.Context(), s.FileID); err == nil {
+			dto.FileName = file.Name
+		}
+		if user, err := h.db.GetUserByID(r.Context(), s.CreatedBy); err == nil {
+			dto.SharedBy = user.Username
+		}
+
+		results = append(results, dto)
+	}
+
 	SuccessResponse(w, map[string]any{
-		"shares": shares,
+		"shares": results,
 	})
 }
 
@@ -340,7 +380,7 @@ func (h *ShareHandler) updateShare(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req updateShareRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := DecodeJSON(r, &req); err != nil {
 		ErrorResponse(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -412,7 +452,14 @@ func (h *ShareHandler) revokeShare(w http.ResponseWriter, r *http.Request) {
 // Helper functions
 
 func generateShareID() string {
-	return "share_" + generateRandomString(16)
+	s, err := generateRandomString(16)
+	if err != nil {
+		// Fallback to crypto/rand hex as last resort (should never happen)
+		b := make([]byte, 8)
+		_, _ = rand.Read(b)
+		s = hex.EncodeToString(b)
+	}
+	return "share_" + s
 }
 
 func generateShareToken() (string, error) {
@@ -423,8 +470,10 @@ func generateShareToken() (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-func generateRandomString(length int) string {
-	bytes := make([]byte, length/2)
-	rand.Read(bytes)
-	return hex.EncodeToString(bytes)
+func generateRandomString(length int) (string, error) {
+	b := make([]byte, length/2)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("failed to generate random string: %w", err)
+	}
+	return hex.EncodeToString(b), nil
 }

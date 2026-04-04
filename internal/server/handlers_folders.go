@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -79,7 +78,7 @@ func (h *FolderHandler) listFolders(w http.ResponseWriter, r *http.Request) {
 
 	files, err := h.vfs.ListDirectory(r.Context(), userID, parentID, opts)
 	if err != nil {
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -118,7 +117,7 @@ func (h *FolderHandler) getFolder(w http.ResponseWriter, r *http.Request) {
 			ErrorResponse(w, http.StatusNotFound, "Folder not found")
 			return
 		}
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -152,7 +151,7 @@ func (h *FolderHandler) createFolder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req createFolderRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := DecodeJSON(r, &req); err != nil {
 		ErrorResponse(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -172,12 +171,11 @@ func (h *FolderHandler) createFolder(w http.ResponseWriter, r *http.Request) {
 			ErrorResponse(w, http.StatusBadRequest, "Invalid folder name")
 			return
 		}
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	SuccessResponse(w, folder)
+	CreatedResponse(w, folder)
 
 	// Emit event for real-time sync
 	if h.events != nil {
@@ -224,7 +222,7 @@ func (h *FolderHandler) updateFolder(w http.ResponseWriter, r *http.Request) {
 			ErrorResponse(w, http.StatusNotFound, "Folder not found")
 			return
 		}
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -239,7 +237,7 @@ func (h *FolderHandler) updateFolder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req updateFolderRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := DecodeJSON(r, &req); err != nil {
 		ErrorResponse(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -247,13 +245,13 @@ func (h *FolderHandler) updateFolder(w http.ResponseWriter, r *http.Request) {
 	// Handle move
 	if req.ParentID != "" {
 		if err := h.vfs.Move(r.Context(), folderID, req.ParentID, req.Name); err != nil {
-			ErrorResponse(w, http.StatusInternalServerError, err.Error())
+			InternalErrorResponse(w, err)
 			return
 		}
 	} else if req.Name != "" {
 		// Just rename
 		if err := h.vfs.Rename(r.Context(), folderID, req.Name); err != nil {
-			ErrorResponse(w, http.StatusInternalServerError, err.Error())
+			InternalErrorResponse(w, err)
 			return
 		}
 	}
@@ -300,7 +298,7 @@ func (h *FolderHandler) deleteFolder(w http.ResponseWriter, r *http.Request) {
 			ErrorResponse(w, http.StatusNotFound, "Folder not found")
 			return
 		}
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -315,7 +313,7 @@ func (h *FolderHandler) deleteFolder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.vfs.Delete(r.Context(), folderID); err != nil {
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -356,7 +354,7 @@ func (h *FolderHandler) getBreadcrumbs(w http.ResponseWriter, r *http.Request) {
 			ErrorResponse(w, http.StatusNotFound, "Folder not found")
 			return
 		}
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -372,7 +370,7 @@ func (h *FolderHandler) getBreadcrumbs(w http.ResponseWriter, r *http.Request) {
 
 	breadcrumbs, err := h.vfs.GetBreadcrumbs(r.Context(), folderID)
 	if err != nil {
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 

@@ -152,7 +152,7 @@ func (m *Manager) GetUserByEmail(ctx context.Context, email string) (*User, erro
 	query := `SELECT id, username, email, display_name, password_hash, role,
 		quota_bytes, used_bytes, totp_secret, totp_enabled,
 		public_key, encrypted_private_key, recovery_key_hash,
-		avatar_chunk_hash, status, last_login_at, created_at, updated_at
+		avatar_chunk_hash, status, password_change_required, last_login_at, created_at, updated_at
 	FROM users WHERE email = ?`
 
 	user := &User{}
@@ -164,7 +164,7 @@ func (m *Manager) GetUserByEmail(ctx context.Context, email string) (*User, erro
 		&user.PasswordHash, &user.Role, &user.QuotaBytes, &user.UsedBytes,
 		&totpSecret, &user.TOTPEnabled,
 		&user.PublicKey, &user.EncryptedPrivateKey, &recoveryKeyHash,
-		&avatarChunkHash, &user.Status, &lastLoginAt,
+		&avatarChunkHash, &user.Status, &user.PasswordChangeRequired, &lastLoginAt,
 		&createdAt, &updatedAt,
 	)
 	if err == sql.ErrNoRows {

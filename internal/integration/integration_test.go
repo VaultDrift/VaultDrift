@@ -175,7 +175,7 @@ func TestTrashFlow(t *testing.T) {
 	suite.DB.CreateFile(ctx, file)
 
 	suite.DB.SoftDelete(ctx, file.ID)
-	trashItems, _ := suite.DB.ListTrash(ctx, user.ID)
+	trashItems, _ := suite.DB.ListTrash(ctx, user.ID, 100, 0)
 	if len(trashItems) != 1 {
 		t.Errorf("Expected 1 item in trash, got %d", len(trashItems))
 	}

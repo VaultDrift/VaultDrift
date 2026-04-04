@@ -8,7 +8,8 @@ interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<string | null>;
+  verifyTotp: (totpSession: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
   fetchUser: () => Promise<void>;
   initWebSocket: () => void;
@@ -21,10 +22,26 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: false,
 
-      login: async (username: string, password: string) => {
+      login: async (username: string, password: string): Promise<string | null> => {
         set({ isLoading: true });
         try {
-          await authApi.login(username, password);
+          const result = await authApi.login(username, password);
+          if (result.requires_totp && result.totp_session) {
+            return result.totp_session;
+          }
+          const user = await authApi.getMe();
+          set({ user, isAuthenticated: true });
+          get().initWebSocket();
+          return null;
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      verifyTotp: async (totpSession: string, code: string) => {
+        set({ isLoading: true });
+        try {
+          await authApi.verifyTotp(totpSession, code);
           const user = await authApi.getMe();
           set({ user, isAuthenticated: true });
           get().initWebSocket();
@@ -35,7 +52,11 @@ export const useAuthStore = create<AuthState>()(
 
       logout: async () => {
         disconnectWebSocket();
-        await authApi.logout();
+        try {
+          await authApi.logout();
+        } catch {
+          // Ignore API errors on logout
+        }
         set({ user: null, isAuthenticated: false });
       },
 

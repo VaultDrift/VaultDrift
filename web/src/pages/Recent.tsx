@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Clock, File, Folder, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -5,12 +6,15 @@ import { filesApi } from '@/lib/api';
 import { File as FileType } from '@/types';
 import { formatBytes, formatDate } from '@/lib/utils';
 
+const PAGE_SIZE = 50;
+
 export function RecentPage() {
   const navigate = useNavigate();
+  const [pageOffset, setPageOffset] = useState(0);
 
   const { data: recentFiles, isLoading } = useQuery({
-    queryKey: ['recent'],
-    queryFn: filesApi.recent,
+    queryKey: ['recent', pageOffset],
+    queryFn: () => filesApi.recent({ limit: PAGE_SIZE, offset: pageOffset }),
   });
 
   const handleFileClick = (file: FileType) => {
@@ -39,47 +43,64 @@ export function RecentPage() {
             <p className="text-sm">Files you access will appear here</p>
           </div>
         ) : (
-          <div className="bg-card rounded-lg border">
-            <table className="w-full">
-              <thead className="border-b">
-                <tr className="text-left text-sm text-muted-foreground">
-                  <th className="px-4 py-3 font-medium">Name</th>
-                  <th className="px-4 py-3 font-medium w-32">Size</th>
-                  <th className="px-4 py-3 font-medium w-48">Modified</th>
-                  <th className="px-4 py-3 font-medium w-16"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {recentFiles?.map((file) => (
-                  <tr
-                    key={file.id}
-                    className="group hover:bg-accent/50 cursor-pointer"
-                    onClick={() => handleFileClick(file)}
-                  >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        {file.type === 'folder' ? (
-                          <Folder className="w-5 h-5 text-primary" />
-                        ) : (
-                          <File className="w-5 h-5 text-muted-foreground" />
-                        )}
-                        <span className="font-medium">{file.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {file.type === 'folder' ? '--' : formatBytes(file.size_bytes)}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {formatDate(file.updated_at)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </td>
+          <>
+            {recentFiles && recentFiles.length > 0 && (
+              <p className="text-sm text-muted-foreground mb-3">
+                Showing {recentFiles.length} item{recentFiles.length !== 1 ? 's' : ''}
+              </p>
+            )}
+            <div className="bg-card rounded-lg border">
+              <table className="w-full">
+                <thead className="border-b">
+                  <tr className="text-left text-sm text-muted-foreground">
+                    <th className="px-4 py-3 font-medium">Name</th>
+                    <th className="px-4 py-3 font-medium w-32">Size</th>
+                    <th className="px-4 py-3 font-medium w-48">Modified</th>
+                    <th className="px-4 py-3 font-medium w-16"></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y">
+                  {recentFiles?.map((file) => (
+                    <tr
+                      key={file.id}
+                      className="group hover:bg-accent/50 cursor-pointer"
+                      onClick={() => handleFileClick(file)}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          {file.type === 'folder' ? (
+                            <Folder className="w-5 h-5 text-primary" />
+                          ) : (
+                            <File className="w-5 h-5 text-muted-foreground" />
+                          )}
+                          <span className="font-medium">{file.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {file.type === 'folder' ? '--' : formatBytes(file.size_bytes)}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {formatDate(file.updated_at)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {recentFiles && recentFiles.length === PAGE_SIZE && (
+              <div className="flex justify-center mt-6">
+                <button
+                  onClick={() => setPageOffset(prev => prev + PAGE_SIZE)}
+                  className="px-6 py-2 rounded-lg border hover:bg-accent transition-colors text-sm font-medium"
+                >
+                  Load more
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

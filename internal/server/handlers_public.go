@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/vaultdrift/vaultdrift/internal/auth"
@@ -28,15 +30,25 @@ func NewPublicShareHandler(database *db.Manager, store storage.Backend) *PublicS
 }
 
 // RegisterRoutes registers public share routes (no auth required).
-func (h *PublicShareHandler) RegisterRoutes(mux *http.ServeMux) {
+// The wrap function is applied to each route for per-route middleware (e.g. rate limiting).
+// Pass nil if no per-route middleware is needed.
+func (h *PublicShareHandler) RegisterRoutes(mux *http.ServeMux, wrap func(http.Handler) http.Handler) {
+	register := func(pattern string, handler http.HandlerFunc) {
+		var h http.Handler = handler
+		if wrap != nil {
+			h = wrap(h)
+		}
+		mux.Handle(pattern, h)
+	}
+
 	// Access share info (metadata)
-	mux.HandleFunc("GET /s/{token}", h.getShareInfo)
+	register("GET /s/{token}", h.getShareInfo)
 
 	// Download shared file
-	mux.HandleFunc("GET /s/{token}/download", h.downloadSharedFile)
+	register("GET /s/{token}/download", h.downloadSharedFile)
 
 	// Stream shared file (for media preview)
-	mux.HandleFunc("GET /s/{token}/stream", h.streamSharedFile)
+	register("GET /s/{token}/stream", h.streamSharedFile)
 }
 
 // shareInfoResponse represents public share metadata.
@@ -51,6 +63,66 @@ type shareInfoResponse struct {
 	HasPassword bool       `json:"has_password"`
 }
 
+// sharePasswordRequest is used to parse password from JSON request body.
+type sharePasswordRequest struct {
+	Password string `json:"password"`
+}
+
+// extractSharePassword extracts the share password from the request.
+// It checks, in order: JSON request body, Authorization Bearer header, URL query parameter.
+func extractSharePassword(r *http.Request) string {
+	// 1. Try JSON body (only if Content-Type suggests JSON and body is present)
+	if r.Body != nil && r.ContentLength > 0 {
+		ct := r.Header.Get("Content-Type")
+		if ct == "" || strings.HasPrefix(ct, "application/json") {
+			bodyBytes, err := io.ReadAll(r.Body)
+			if err == nil && len(bodyBytes) > 0 {
+				var req sharePasswordRequest
+				if json.Unmarshal(bodyBytes, &req) == nil && req.Password != "" {
+					return req.Password
+				}
+			}
+		}
+	}
+
+	// 2. Try Authorization: Bearer <password> header
+	authHeader := r.Header.Get("Authorization")
+	if strings.HasPrefix(authHeader, "Bearer ") {
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		if token != "" {
+			return token
+		}
+	}
+
+	// 3. Fall back to query parameter (backward compatibility)
+	if pw := r.URL.Query().Get("password"); pw != "" {
+		return pw
+	}
+
+	return ""
+}
+
+// authenticateSharePassword checks whether the request supplies the correct password
+// for a password-protected share. It writes the appropriate error response and returns
+// false if authentication fails or is required but missing.
+func authenticateSharePassword(w http.ResponseWriter, r *http.Request, share *db.Share) bool {
+	if share.PasswordHash == nil {
+		return true
+	}
+	password := extractSharePassword(r)
+	if password == "" {
+		w.Header().Set("WWW-Authenticate", "Bearer realm=\"share\"")
+		http.Error(w, "Password required", http.StatusUnauthorized)
+		return false
+	}
+	valid, err := auth.VerifyPassword(password, *share.PasswordHash)
+	if err != nil || !valid {
+		http.Error(w, "Invalid password", http.StatusUnauthorized)
+		return false
+	}
+	return true
+}
+
 // getShareInfo returns public share metadata (no password required for basic info).
 func (h *PublicShareHandler) getShareInfo(w http.ResponseWriter, r *http.Request) {
 	token := r.PathValue("token")
@@ -61,7 +133,7 @@ func (h *PublicShareHandler) getShareInfo(w http.ResponseWriter, r *http.Request
 
 	share, file, err := h.validateShare(r, token)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		http.Error(w, "Share not found or unavailable", http.StatusNotFound)
 		return
 	}
 
@@ -93,24 +165,13 @@ func (h *PublicShareHandler) downloadSharedFile(w http.ResponseWriter, r *http.R
 
 	share, file, err := h.validateShare(r, token)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		http.Error(w, "Share not found or unavailable", http.StatusNotFound)
 		return
 	}
 
 	// Check password if required
-	if share.PasswordHash != nil {
-		password := r.URL.Query().Get("password")
-		if password == "" {
-			w.Header().Set("WWW-Authenticate", "Bearer realm=\"share\"")
-			http.Error(w, "Password required", http.StatusUnauthorized)
-			return
-		}
-		// Verify password hash
-		valid, err := auth.VerifyPassword(password, *share.PasswordHash)
-		if err != nil || !valid {
-			http.Error(w, "Invalid password", http.StatusUnauthorized)
-			return
-		}
+	if !authenticateSharePassword(w, r, share) {
+		return
 	}
 
 	// Check preview-only restriction
@@ -120,16 +181,16 @@ func (h *PublicShareHandler) downloadSharedFile(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Check download limit
-	if share.MaxDownloads != nil && share.DownloadCount >= *share.MaxDownloads {
-		http.Error(w, "Download limit reached", http.StatusForbidden)
-		return
-	}
-
-	// Increment download count
-	if err := h.db.IncrementShareDownloadCount(r.Context(), share.ID); err != nil {
-		// Log but don't fail
-	}
+		// Atomically increment download count and check limit
+		allowed, err := h.db.IncrementShareDownloadCount(r.Context(), share.ID, share.MaxDownloads)
+		if err != nil {
+			http.Error(w, `{"error":"Internal server error"}`, http.StatusInternalServerError)
+			return
+		}
+		if !allowed {
+			http.Error(w, "Download limit reached", http.StatusForbidden)
+			return
+		}
 
 	// Get manifest
 	if file.ManifestID == nil || *file.ManifestID == "" {
@@ -164,24 +225,13 @@ func (h *PublicShareHandler) streamSharedFile(w http.ResponseWriter, r *http.Req
 
 	share, file, err := h.validateShare(r, token)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		http.Error(w, "Share not found or unavailable", http.StatusNotFound)
 		return
 	}
 
 	// Check password if required
-	if share.PasswordHash != nil {
-		password := r.URL.Query().Get("password")
-		if password == "" {
-			w.Header().Set("WWW-Authenticate", "Bearer realm=\"share\"")
-			http.Error(w, "Password required", http.StatusUnauthorized)
-			return
-		}
-		// Verify password hash
-		valid, err := auth.VerifyPassword(password, *share.PasswordHash)
-		if err != nil || !valid {
-			http.Error(w, "Invalid password", http.StatusUnauthorized)
-			return
-		}
+	if !authenticateSharePassword(w, r, share) {
+		return
 	}
 
 	// Get manifest
@@ -279,7 +329,9 @@ func (h *PublicShareHandler) streamContent(ctx context.Context, manifest *db.Man
 		if err != nil {
 			return
 		}
-		_, _ = w.Write(data)
+		if _, err := w.Write(data); err != nil {
+			return
+		}
 	}
 }
 
@@ -315,7 +367,9 @@ func (h *PublicShareHandler) streamRange(ctx context.Context, manifest *db.Manif
 		}
 
 		slice := data[sliceStart:sliceEnd]
-		_, _ = w.Write(slice)
+		if _, err := w.Write(slice); err != nil {
+			return
+		}
 
 		bytesWritten += int64(len(slice))
 		if bytesWritten >= targetBytes {

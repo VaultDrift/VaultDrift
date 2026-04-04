@@ -62,26 +62,21 @@ func (h *TrashHandler) listTrash(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	items, err := h.vfs.ListTrash(r.Context(), userID)
+	items, err := h.vfs.ListTrash(r.Context(), userID, limit, offset)
 	if err != nil {
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
-	// Apply pagination manually (in production, do this in DB query)
-	start := offset
-	if start > len(items) {
-		start = len(items)
+	total, err := h.vfs.CountTrash(r.Context(), userID)
+	if err != nil {
+		InternalErrorResponse(w, err)
+		return
 	}
-	end := start + limit
-	if end > len(items) {
-		end = len(items)
-	}
-	paginatedItems := items[start:end]
 
 	SuccessResponse(w, map[string]any{
-		"items":  paginatedItems,
-		"total":  len(items),
+		"items":  items,
+		"total":  total,
 		"limit":  limit,
 		"offset": offset,
 	})
@@ -108,7 +103,7 @@ func (h *TrashHandler) restoreItem(w http.ResponseWriter, r *http.Request) {
 			ErrorResponse(w, http.StatusNotFound, "Item not found")
 			return
 		}
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -118,7 +113,7 @@ func (h *TrashHandler) restoreItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.vfs.Restore(r.Context(), itemID); err != nil {
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -146,7 +141,7 @@ func (h *TrashHandler) permanentDelete(w http.ResponseWriter, r *http.Request) {
 			ErrorResponse(w, http.StatusNotFound, "Item not found")
 			return
 		}
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -156,14 +151,14 @@ func (h *TrashHandler) permanentDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.vfs.DeletePermanent(r.Context(), itemID); err != nil {
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
 	SuccessResponse(w, map[string]string{"status": "deleted"})
 }
 
-// emptyTrash permanently deletes all items in the user's trash.
+// emptyTrash permanently deletes all items in the user's trash using batched deletion.
 func (h *TrashHandler) emptyTrash(w http.ResponseWriter, r *http.Request) {
 	userID := GetUserIDFromRequest(r)
 	if userID == "" {
@@ -171,27 +166,39 @@ func (h *TrashHandler) emptyTrash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	items, err := h.vfs.ListTrash(r.Context(), userID)
-	if err != nil {
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
 	deletedCount := 0
 	failedCount := 0
+	const batchSize = 100
+	offset := 0
 
-	for _, item := range items {
-		if err := h.vfs.DeletePermanent(r.Context(), item.ID); err != nil {
-			failedCount++
-		} else {
-			deletedCount++
+	for {
+		items, err := h.vfs.ListTrash(r.Context(), userID, batchSize, offset)
+		if err != nil {
+			InternalErrorResponse(w, err)
+			return
 		}
+		if len(items) == 0 {
+			break
+		}
+
+		for _, item := range items {
+			if err := h.vfs.DeletePermanent(r.Context(), item.ID); err != nil {
+				failedCount++
+			} else {
+				deletedCount++
+			}
+		}
+
+		// If we got fewer than batchSize items, we've reached the end.
+		if len(items) < batchSize {
+			break
+		}
+		offset += batchSize
 	}
 
 	SuccessResponse(w, map[string]any{
 		"status":  "emptied",
 		"deleted": deletedCount,
 		"failed":  failedCount,
-		"total":   len(items),
 	})
 }

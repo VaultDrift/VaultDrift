@@ -15,8 +15,19 @@ import {
   Activity,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { syncApi } from '@/lib/api';
+import { syncApi, SyncDevice } from '@/lib/api';
 import { cn, formatDate, formatBytes } from '@/lib/utils';
+
+interface SyncSession {
+  id: string;
+  device_name: string;
+  started_at: string;
+  completed_at?: string;
+  status: string;
+  files_synced: number;
+  bytes_transferred: number;
+}
+
 import {
   Card,
   CardContent,
@@ -43,29 +54,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 
-interface Device {
-  id: string;
-  name: string;
-  type: 'desktop' | 'mobile' | 'tablet' | 'web';
-  platform: string;
-  last_sync: string;
-  status: 'online' | 'offline' | 'syncing';
-  sync_count: number;
-}
-
-interface SyncSession {
-  id: string;
-  device_name: string;
-  started_at: string;
-  completed_at?: string;
-  status: 'pending' | 'syncing' | 'completed' | 'failed';
-  files_synced: number;
-  bytes_transferred: number;
-}
-
 export function SyncPage() {
   const queryClient = useQueryClient();
-  const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
+  const [selectedDevice, setSelectedDevice] = useState<SyncDevice | null>(null);
   const [isRevokeDialogOpen, setIsRevokeDialogOpen] = useState(false);
 
   // Fetch devices
@@ -77,7 +68,7 @@ export function SyncPage() {
   // Fetch sessions
   const { data: sessions, isLoading: isLoadingSessions } = useQuery({
     queryKey: ['sync', 'sessions'],
-    queryFn: syncApi.getSessions,
+    queryFn: async () => syncApi.getSessions() as Promise<SyncSession[]>,
   });
 
   // Fetch sync status
@@ -127,8 +118,8 @@ export function SyncPage() {
     }
   };
 
-  const activeDevices = devices?.filter((d: Device) => d.status === 'online').length || 0;
-  const totalSyncs = devices?.reduce((sum: number, d: Device) => sum + d.sync_count, 0) || 0;
+  const activeDevices = devices?.filter((d: SyncDevice) => d.is_active).length || 0;
+  const totalSyncs = devices?.length || 0;
 
   return (
     <div className="h-full flex flex-col overflow-auto">
@@ -140,10 +131,10 @@ export function SyncPage() {
             className={cn(
               'w-2 h-2 rounded-full',
               syncStatus?.status === 'connected'
-                ? 'bg-green-500'
+                ? 'bg-primary'
                 : syncStatus?.status === 'syncing'
-                ? 'bg-blue-500 animate-pulse'
-                : 'bg-red-500'
+                ? 'bg-primary animate-pulse'
+                : 'bg-destructive'
             )}
           />
           <span className="text-sm text-muted-foreground capitalize">
@@ -233,7 +224,7 @@ export function SyncPage() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {devices?.map((device: Device) => (
+                    {devices?.map((device: SyncDevice) => (
                       <div
                         key={device.id}
                         className="p-4 border rounded-lg hover:border-primary transition-colors"
@@ -241,22 +232,20 @@ export function SyncPage() {
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                              {getDeviceIcon(device.type)}
+                              {getDeviceIcon(device.device_type)}
                             </div>
                             <div>
                               <p className="font-medium">{device.name}</p>
                               <p className="text-sm text-muted-foreground">
-                                {device.platform}
+                                {device.os}
                               </p>
                             </div>
                           </div>
                           <div
                             className={cn(
                               'w-2 h-2 rounded-full',
-                              device.status === 'online'
-                                ? 'bg-green-500'
-                                : device.status === 'syncing'
-                                ? 'bg-blue-500 animate-pulse'
+                              device.is_active
+                                ? 'bg-primary'
                                 : 'bg-muted'
                             )}
                           />
@@ -265,11 +254,7 @@ export function SyncPage() {
                         <div className="mt-4 space-y-2">
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <Clock className="w-4 h-4" />
-                            <span>Last sync: {formatDate(device.last_sync)}</span>
-                          </div>
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <RefreshCw className="w-4 h-4" />
-                            <span>{device.sync_count} syncs</span>
+                            <span>Last sync: {device.last_sync_at ? formatDate(device.last_sync_at) : 'Never'}</span>
                           </div>
                         </div>
 

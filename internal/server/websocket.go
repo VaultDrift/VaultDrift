@@ -2,8 +2,11 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -175,14 +178,20 @@ func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 	// Upgrade HTTP to WebSocket
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		http.Error(w, "WebSocket upgrade failed: "+err.Error(), http.StatusBadRequest)
+		http.Error(w, "WebSocket upgrade failed", http.StatusBadRequest)
 		return
 	}
 
 	// Get device ID
 	deviceID := r.URL.Query().Get("device_id")
 	if deviceID == "" {
-		deviceID = generateRandomString(16)
+		ds, err := generateRandomString(16)
+		if err != nil {
+			b := make([]byte, 8)
+			_, _ = rand.Read(b)
+			ds = hex.EncodeToString(b)
+		}
+		deviceID = ds
 	}
 
 	// Create client
@@ -253,19 +262,12 @@ func (s *WebSocketServer) run() {
 
 // broadcastEvent sends an event to all subscribed clients
 func (s *WebSocketServer) broadcastEvent(event *WebSocketEvent) {
-	// Build message once
 	message := &WebSocketMessage{
 		Type:      WSMsgTypeEvent,
 		Payload:   mustJSON(event),
 		Timestamp: time.Now().Unix(),
 	}
 
-	data, err := json.Marshal(message)
-	if err != nil {
-		return
-	}
-
-	// Get clients for this user
 	s.userMu.RLock()
 	clientIDs := s.userIndex[event.UserID]
 	s.userMu.RUnlock()
@@ -283,7 +285,6 @@ func (s *WebSocketServer) broadcastEvent(event *WebSocketEvent) {
 			continue
 		}
 
-		// Skip if client hasn't subscribed to this folder (if specified)
 		if event.FolderID != "" {
 			client.mu.RLock()
 			subscribed := client.SubscribedFolders[event.FolderID] || client.SubscribedFolders[""]
@@ -293,15 +294,12 @@ func (s *WebSocketServer) broadcastEvent(event *WebSocketEvent) {
 			}
 		}
 
-		// Send directly to avoid channel bottleneck for broadcast
-		_ = client.Conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		if err := client.Conn.WriteMessage(websocket.TextMessage, data); err != nil {
-			// Write failed, client will be cleaned up on next read
-			_ = err // Explicitly ignore - client cleanup handled elsewhere
+		select {
+		case client.Send <- message:
+		default:
 		}
 	}
 }
-
 // Broadcast sends an event to all connected clients (or filtered by user)
 func (s *WebSocketServer) Broadcast(event *WebSocketEvent) {
 	select {
@@ -498,7 +496,8 @@ func (c *WebSocketClient) handleSyncRequest(msg *WebSocketMessage) {
 	}
 	items, err := c.Server.vfs.ListDirectory(ctx, c.UserID, payload.FolderID, opts)
 	if err != nil {
-		c.sendError(msg.ID, "sync_failed", err.Error())
+		log.Printf("sync_failed: %v", err)
+		c.sendError(msg.ID, "sync_failed", "Failed to list directory")
 		return
 	}
 
@@ -539,7 +538,13 @@ func (c *WebSocketClient) sendError(id, code, message string) {
 }
 
 func generateClientID() string {
-	return "ws_" + generateRandomString(16)
+	ws, err := generateRandomString(16)
+	if err != nil {
+		b := make([]byte, 8)
+		_, _ = rand.Read(b)
+		ws = hex.EncodeToString(b)
+	}
+	return "ws_" + ws
 }
 
 func mustJSON(v interface{}) json.RawMessage {

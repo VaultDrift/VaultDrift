@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -121,10 +122,24 @@ func (m *Manager) UpdateDevice(ctx context.Context, id string, updates map[strin
 		return nil
 	}
 
+	allowedFields := map[string]bool{
+		"name":          true,
+		"device_type":   true,
+		"os":            true,
+		"sync_folder":   true,
+		"last_sync_at":  true,
+		"vector_clock":  true,
+		"merkle_root":   true,
+		"is_active":     true,
+	}
+
 	setClauses := make([]string, 0, len(updates))
 	args := make([]any, 0, len(updates)+2)
 
 	for field, value := range updates {
+		if !allowedFields[field] {
+			return fmt.Errorf("invalid update field: %s", field)
+		}
 		setClauses = append(setClauses, fmt.Sprintf("%s = ?", field))
 		if b, ok := value.(bool); ok {
 			args = append(args, boolToInt(b))
@@ -137,7 +152,7 @@ func (m *Manager) UpdateDevice(ctx context.Context, id string, updates map[strin
 	args = append(args, time.Now().UTC().Format(time.RFC3339))
 	args = append(args, id)
 
-	query := fmt.Sprintf("UPDATE devices SET %s WHERE id = ?", setClauses) // #nosec G201 G202 - setClauses are safe, constructed from allowed fields only
+	query := fmt.Sprintf("UPDATE devices SET %s WHERE id = ?", strings.Join(setClauses, ", ")) // #nosec G201 G202 - setClauses are safe, constructed from allowed fields only
 
 	result, err := m.db.ExecContext(ctx, query, args...)
 	if err != nil {

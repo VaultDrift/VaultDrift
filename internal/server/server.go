@@ -6,11 +6,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
-	"os/signal"
 	"path/filepath"
 	"runtime"
-	"syscall"
 	"time"
 
 	"github.com/vaultdrift/vaultdrift/internal/auth"
@@ -20,7 +17,10 @@ import (
 	"github.com/vaultdrift/vaultdrift/internal/media"
 	"github.com/vaultdrift/vaultdrift/internal/preview"
 	"github.com/vaultdrift/vaultdrift/internal/storage"
+	syncpkg "github.com/vaultdrift/vaultdrift/internal/sync"
+	"github.com/vaultdrift/vaultdrift/internal/tracing"
 	"github.com/vaultdrift/vaultdrift/internal/vfs"
+	"github.com/vaultdrift/vaultdrift/internal/webdav"
 	"github.com/vaultdrift/vaultdrift/web"
 )
 
@@ -35,9 +35,10 @@ type Server struct {
 	config     config.ServerConfig
 	jwtSecret  []byte
 	rbac       *auth.RBAC
-	events     *EventNotifier
-	federation *federation.Manager
-	metrics    *Metrics
+	events        *EventNotifier
+	federation    *federation.Manager
+	metrics       *Metrics
+	uploadHandler *UploadHandler
 }
 
 // NewServer creates a new HTTP server.
@@ -68,47 +69,47 @@ func NewServer(cfg config.ServerConfig, database *db.Manager, authService *auth.
 	s.httpServer = &http.Server{
 		Addr:         addr,
 		Handler:      s.wrapMiddleware(router),
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		ReadTimeout:  cfg.ReadTimeout,
+		WriteTimeout: cfg.WriteTimeout,
+		IdleTimeout:  cfg.IdleTimeout,
 	}
 
 	return s
 }
 
-// Start starts the server and blocks until shutdown.
+// Start starts the server and blocks until ListenAndServe returns.
+// Use Stop() for graceful shutdown from external signal handlers.
 func (s *Server) Start() error {
-	// Setup graceful shutdown
-	done := make(chan bool, 1)
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		<-quit
-		log.Println("Server is shutting down...")
-
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		s.httpServer.SetKeepAlivesEnabled(false)
-		if err := s.httpServer.Shutdown(ctx); err != nil {
-			log.Printf("Could not gracefully shutdown the server: %v\n", err)
-		}
-		close(done)
-	}()
-
 	log.Printf("Server is ready to handle requests at %s:%d\n", s.config.Host, s.config.Port)
-	if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		return fmt.Errorf("could not listen on %s:%d: %w", s.config.Host, s.config.Port, err)
+
+	var listenErr error
+	if s.config.TLS.Enabled {
+		certFile := s.config.TLS.CertFile
+		keyFile := s.config.TLS.KeyFile
+		if certFile == "" || keyFile == "" {
+			return fmt.Errorf("TLS enabled but cert_file or key_file not configured")
+		}
+		listenErr = s.httpServer.ListenAndServeTLS(certFile, keyFile)
+	} else {
+		listenErr = s.httpServer.ListenAndServe()
+	}
+	if listenErr != nil && listenErr != http.ErrServerClosed {
+		return fmt.Errorf("could not listen on %s:%d: %w", s.config.Host, s.config.Port, listenErr)
 	}
 
-	<-done
 	log.Println("Server stopped")
 	return nil
 }
 
 // Stop gracefully stops the server.
 func (s *Server) Stop(ctx context.Context) error {
+	// Stop background goroutines
+	if s.events != nil {
+		s.events.Close()
+	}
+	if s.uploadHandler != nil {
+		s.uploadHandler.Close()
+	}
 	return s.httpServer.Shutdown(ctx)
 }
 
@@ -118,17 +119,17 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("GET /health", s.handleHealth)
 	s.router.HandleFunc("GET /ready", s.handleReady)
 
-	// Metrics endpoints (public for monitoring, should be protected by reverse proxy)
-	s.router.Handle("GET /metrics/json", s.metrics.MetricsHandler())
-	s.router.Handle("GET /metrics/prometheus", s.metrics.PrometheusHandler())
-	s.router.Handle("GET /metrics", s.metrics.PrometheusHandler()) // Default to Prometheus format
-
 	// Auth handlers (public)
 	authHandler := NewAuthHandler(s.authSvc)
 	authHandler.RegisterRoutes(s.router)
 
 	// Create auth middleware
 	authMiddleware := NewAuthMiddleware(s.authSvc, nil, s.rbac, s.jwtSecret)
+
+	// Metrics endpoints (require authentication)
+	s.router.Handle("GET /metrics/json", authMiddleware.Authenticate(s.metrics.MetricsHandler()))
+	s.router.Handle("GET /metrics/prometheus", authMiddleware.Authenticate(s.metrics.PrometheusHandler()))
+	s.router.Handle("GET /metrics", authMiddleware.Authenticate(s.metrics.PrometheusHandler()))
 
 	// User handlers (profile, settings)
 	userHandler := NewUserHandler(s.db, s.authSvc)
@@ -143,28 +144,37 @@ func (s *Server) setupRoutes() {
 	folderHandler.RegisterRoutes(s.router, authMiddleware)
 
 	// Upload handlers
-	uploadHandler := NewUploadHandler(s.vfs, s.db, s.storage)
-	uploadHandler.RegisterRoutes(s.router, authMiddleware)
+	s.uploadHandler = NewUploadHandler(s.vfs, s.db, s.storage)
+	s.uploadHandler.RegisterRoutes(s.router, authMiddleware)
 
 	// Download handlers
 	downloadHandler := NewDownloadHandler(s.vfs, s.db, s.storage)
 	downloadHandler.RegisterRoutes(s.router, authMiddleware)
 
 	// Share handlers (authenticated)
-	shareHandler := NewShareHandler(s.vfs, s.db, s.events)
+	shareHandler := NewShareHandler(s.vfs, s.db, s.events, s.config.Sharing)
 	shareHandler.RegisterRoutes(s.router, authMiddleware)
 
-	// Public share handlers (no auth required)
+	// Public share handlers (no auth required, rate-limited)
 	publicShareHandler := NewPublicShareHandler(s.db, s.storage)
-	publicShareHandler.RegisterRoutes(s.router)
+	publicShareRL := NewRateLimitMiddleware(60, time.Minute)
+	publicShareHandler.RegisterRoutes(s.router, publicShareRL.Limit)
 
 	// Trash handlers
 	trashHandler := NewTrashHandler(s.vfs, s.db)
 	trashHandler.RegisterRoutes(s.router, authMiddleware)
 
 	// Version handlers
-	versionHandler := NewVersionHandler(s.vfs)
+	versionHandler := NewVersionHandler(s.vfs, s.db)
 	versionHandler.RegisterRoutes(s.router, authMiddleware)
+
+	// Admin handlers (system stats, user management, audit logs, profiling)
+	adminHandler := NewAdminHandler(s.db, s.authSvc, s.storage, nil)
+	adminHandler.RegisterRoutes(s.router, authMiddleware.Authenticate)
+
+	// Backup handlers (database backup/restore)
+	backupHandler := NewBackupHandler(s.db, "data")
+	backupHandler.RegisterRoutes(s.router, authMiddleware.Authenticate)
 
 	// Media streaming handlers (HLS transcoding)
 	mediaHandler := media.NewStreamHandler(s.vfs, s.db, s.storage)
@@ -182,6 +192,15 @@ func (s *Server) setupRoutes() {
 	// Real-time event streaming (SSE)
 	s.events.RegisterRoutes(s.router, authMiddleware)
 
+	// WebSocket real-time updates
+	wsServer := NewWebSocketServer(s.vfs, s.db, s.jwtSecret, s.config.AllowedOrigins)
+	wsServer.RegisterRoutes(s.router, authHandler)
+
+	// Sync handlers (device management, negotiate, push, pull, commit)
+	syncEngine := syncpkg.NewEngine(s.db, s.storage)
+	syncHandler := NewSyncHandler(syncEngine, s.db, s.storage)
+	syncHandler.RegisterRoutes(s.router, authMiddleware.Authenticate)
+
 	// Federation handlers
 	if s.federation != nil && s.federation.IsEnabled() {
 		fedHandler := NewFederationHandler(s.federation)
@@ -191,6 +210,28 @@ func (s *Server) setupRoutes() {
 	// Static files (for web UI) - embedded from web/dist
 	webFS := web.FS()
 	s.router.Handle("/", http.FileServer(webFS))
+
+	// WebDAV handler (mounted on /webdav/)
+	webdavHandler := webdav.NewHandler(s.vfs, s.db, s.storage, "/webdav")
+		webdavHandler.SetCredentialValidator(func(ctx context.Context, username, password string) (string, bool) {
+			user, err := s.db.GetUserByUsername(ctx, username)
+			if err != nil {
+				return "", false
+			}
+			if user.Status != "active" {
+				return "", false
+			}
+			if user.TOTPEnabled {
+				// WebDAV Basic Auth cannot handle 2FA; reject
+				return "", false
+			}
+			ok, err := auth.VerifyPassword(password, user.PasswordHash)
+			if err != nil || !ok {
+				return "", false
+			}
+			return user.ID, true
+		})
+	s.router.Handle("/webdav/", authMiddleware.Authenticate(webdavHandler))
 }
 
 // wrapMiddleware applies global middleware.
@@ -208,8 +249,13 @@ func (s *Server) wrapMiddleware(handler http.Handler) http.Handler {
 	}
 
 	handler = LoggingMiddleware(handler)
-	handler = CORSMiddleware(handler, nil)
+	handler = CORSMiddleware(handler, s.config.AllowedOrigins)
 	handler = SecurityHeadersMiddleware(handler)
+
+	// Tracing middleware (no-op if no provider initialized)
+	tracingMW := tracing.NewHTTPMiddleware()
+	handler = tracingMW.Middleware(handler)
+
 	return handler
 }
 
@@ -218,8 +264,28 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 
+	deps := map[string]string{
+		"database":   "ok",
+		"storage":    "ok",
+		"web_socket": "ok",
+	}
+
+	status := "healthy"
+
+	// Check database connectivity
+	if err := s.db.Ping(r.Context()); err != nil {
+		status = "degraded"
+		deps["database"] = "unavailable"
+	}
+
+	// Check storage backend connectivity
+	if _, err := s.storage.Stats(r.Context()); err != nil {
+		status = "degraded"
+		deps["storage"] = "unavailable"
+	}
+
 	health := map[string]interface{}{
-		"status":    "healthy",
+		"status":    status,
 		"version":   "0.1.0",
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 		"system": map[string]interface{}{
@@ -233,18 +299,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 			},
 			"gc_count": memStats.NumGC,
 		},
-		"dependencies": map[string]string{
-			"database":   "ok",
-			"storage":    "ok",
-			"web_socket": "ok",
-		},
-	}
-
-	// Check database
-	if err := s.db.Ping(r.Context()); err != nil {
-		health["status"] = "degraded"
-		deps := health["dependencies"].(map[string]string)
-		deps["database"] = "error: " + err.Error()
+		"dependencies": deps,
 	}
 
 	writeJSON(w, http.StatusOK, health)

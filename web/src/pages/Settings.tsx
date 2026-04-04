@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { User, Lock, Bell, Shield, Save, Loader2 } from 'lucide-react';
+import { User, Lock, Shield, Save, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth';
+import { authApi } from '@/lib/api';
 
 interface SettingsForm {
   display_name: string;
@@ -34,23 +35,19 @@ export function SettingsPage() {
   }, [user]);
 
   const updateProfileMutation = useMutation({
-    mutationFn: async (data: Partial<SettingsForm>) => {
-      // TODO: Add profile update API endpoint
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      return data;
-    },
+    mutationFn: (data: Partial<SettingsForm>) =>
+      authApi.updateProfile({ display_name: data.display_name, email: data.email }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['user'] });
       toast.success('Profile updated');
+      useAuthStore.getState().fetchUser();
     },
+    onError: () => toast.error('Failed to update profile'),
   });
 
   const updatePasswordMutation = useMutation({
-    mutationFn: async (data: { current: string; new: string }) => {
-      // TODO: Add password change API endpoint
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      return data;
-    },
+    mutationFn: (data: { current: string; new: string }) =>
+      authApi.changePassword(data.current, data.new),
     onSuccess: () => {
       setForm((prev) => ({
         ...prev,
@@ -60,6 +57,7 @@ export function SettingsPage() {
       }));
       toast.success('Password updated');
     },
+    onError: () => toast.error('Failed to update password'),
   });
 
   const handleProfileSubmit = (e: React.FormEvent) => {
@@ -235,28 +233,6 @@ export function SettingsPage() {
           </form>
         </section>
 
-        {/* Notifications Section */}
-        <section className="bg-card rounded-lg border p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <Bell className="w-5 h-5 text-primary" />
-            <h2 className="text-lg font-semibold">Notifications</h2>
-          </div>
-
-          <div className="space-y-4">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" className="rounded border-gray-300" defaultChecked />
-              <span>Email notifications for shared files</span>
-            </label>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" className="rounded border-gray-300" defaultChecked />
-              <span>Email notifications for sync conflicts</span>
-            </label>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" className="rounded border-gray-300" />
-              <span>Push notifications for file uploads</span>
-            </label>
-          </div>
-        </section>
       </div>
     </div>
   );

@@ -3,15 +3,19 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 )
 
 // CreateAPIToken creates a new API token.
 func (m *Manager) CreateAPIToken(ctx context.Context, token *APIToken) error {
 	// Serialize permissions as JSON array
-	permsJSON := "[" + strings.Join(token.Permissions, ",") + "]"
+	permsJSONBytes, err := json.Marshal(token.Permissions)
+	if err != nil {
+		return fmt.Errorf("failed to marshal permissions: %w", err)
+	}
+	permsJSON := string(permsJSONBytes)
 
 	query := `INSERT INTO api_tokens (
 		id, user_id, name, token_hash, permissions, last_used_at, expires_at, created_at
@@ -27,7 +31,7 @@ func (m *Manager) CreateAPIToken(ctx context.Context, token *APIToken) error {
 		expiresAt = &s
 	}
 
-	_, err := m.db.ExecContext(ctx, query,
+	_, err = m.db.ExecContext(ctx, query,
 		token.ID, token.UserID, token.Name, token.TokenHash,
 		permsJSON, lastUsedAt, expiresAt, token.CreatedAt.Format(time.RFC3339),
 	)
@@ -214,21 +218,10 @@ func (m *Manager) CleanupExpiredAPITokens(ctx context.Context) (int64, error) {
 }
 
 // parsePermissionsJSON parses a JSON array of permissions.
-// Simple implementation: remove brackets and split by comma.
-func parsePermissionsJSON(json string) []string {
-	json = strings.Trim(json, "[]")
-	if json == "" {
+func parsePermissionsJSON(raw string) []string {
+	var perms []string
+	if err := json.Unmarshal([]byte(raw), &perms); err != nil {
 		return []string{}
 	}
-	// This is a simplified parser - in production, use proper JSON parsing
-	// For now, assume format: ["perm1","perm2","perm3"]
-	parts := strings.Split(json, ",")
-	result := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.Trim(p, `"`)
-		if p != "" {
-			result = append(result, p)
-		}
-	}
-	return result
+	return perms
 }

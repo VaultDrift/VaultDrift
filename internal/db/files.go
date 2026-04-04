@@ -283,8 +283,17 @@ func (m *Manager) UpdateFile(ctx context.Context, id string, updates map[string]
 
 // MoveFile moves a file to a new parent and/or renames it.
 func (m *Manager) MoveFile(ctx context.Context, id, newParentID, newName string) error {
+	// Convert empty parentID to nil so SQLite stores NULL instead of "".
+	// Empty string breaks UNIQUE constraint behavior which treats "" and NULL as distinct.
+	var parentIDVal any
+	if newParentID == "" {
+		parentIDVal = nil
+	} else {
+		parentIDVal = newParentID
+	}
+
 	query := `UPDATE files SET parent_id = ?, name = ?, updated_at = ? WHERE id = ?`
-	result, err := m.db.ExecContext(ctx, query, newParentID, newName, time.Now().UTC().Format(time.RFC3339), id)
+	result, err := m.db.ExecContext(ctx, query, parentIDVal, newName, time.Now().UTC().Format(time.RFC3339), id)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			return fmt.Errorf("file already exists at destination")
@@ -317,17 +326,25 @@ func (m *Manager) SoftDelete(ctx context.Context, id string) error {
 	return nil
 }
 
-// ListTrash retrieves trashed files for a user.
-func (m *Manager) ListTrash(ctx context.Context, userID string) ([]*File, error) {
+// ListTrash retrieves trashed files for a user with pagination.
+func (m *Manager) ListTrash(ctx context.Context, userID string, limit, offset int) ([]*File, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
 	query := `SELECT id, user_id, parent_id, name, name_encrypted, type,
 		size_bytes, mime_type, manifest_id, checksum,
 		is_encrypted, encrypted_key, is_trashed, trashed_at,
 		version, created_at, updated_at
 	FROM files
 	WHERE user_id = ? AND is_trashed = 1
-	ORDER BY trashed_at DESC`
+	ORDER BY trashed_at DESC
+	LIMIT ? OFFSET ?`
 
-	rows, err := m.db.QueryContext(ctx, query, userID)
+	rows, err := m.db.QueryContext(ctx, query, userID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list trash: %w", err)
 	}
@@ -377,6 +394,19 @@ func (m *Manager) ListTrash(ctx context.Context, userID string) ([]*File, error)
 	}
 
 	return files, nil
+}
+
+// CountTrash returns the total number of trashed files for a user.
+func (m *Manager) CountTrash(ctx context.Context, userID string) (int64, error) {
+	var count int64
+	err := m.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM files WHERE user_id = ? AND is_trashed = 1`,
+		userID,
+	).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count trash: %w", err)
+	}
+	return count, nil
 }
 
 // RestoreFromTrash restores a file from trash.
@@ -542,4 +572,18 @@ func (m *Manager) RecentFiles(ctx context.Context, userID string, limit int) ([]
 	}
 
 	return files, nil
+}
+
+// CountFiles returns the total number of non-deleted files.
+func (m *Manager) CountFiles(ctx context.Context) (int64, error) {
+	var count int64
+	err := m.QueryRow(ctx, `SELECT COUNT(*) FROM files WHERE is_trashed = 0`).Scan(&count)
+	return count, err
+}
+
+// SumFileBytes returns the total size in bytes of all non-deleted files.
+func (m *Manager) SumFileBytes(ctx context.Context) (int64, error) {
+	var total int64
+	err := m.QueryRow(ctx, `SELECT COALESCE(SUM(size_bytes), 0) FROM files WHERE is_trashed = 0 AND type = 'file'`).Scan(&total)
+	return total, err
 }

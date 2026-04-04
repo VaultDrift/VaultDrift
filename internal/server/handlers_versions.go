@@ -1,20 +1,21 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 
+	"github.com/vaultdrift/vaultdrift/internal/db"
 	"github.com/vaultdrift/vaultdrift/internal/vfs"
 )
 
 // VersionHandler handles file versioning API requests.
 type VersionHandler struct {
 	vfs *vfs.VFS
+	db  *db.Manager
 }
 
 // NewVersionHandler creates a new version handler.
-func NewVersionHandler(vfsService *vfs.VFS) *VersionHandler {
-	return &VersionHandler{vfs: vfsService}
+func NewVersionHandler(vfsService *vfs.VFS, database *db.Manager) *VersionHandler {
+	return &VersionHandler{vfs: vfsService, db: database}
 }
 
 // RegisterRoutes registers the version routes.
@@ -47,7 +48,7 @@ func (h *VersionHandler) getVersion(w http.ResponseWriter, r *http.Request) {
 			ErrorResponse(w, http.StatusNotFound, "File not found")
 			return
 		}
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -84,7 +85,7 @@ func (h *VersionHandler) incrementVersion(w http.ResponseWriter, r *http.Request
 			ErrorResponse(w, http.StatusNotFound, "File not found")
 			return
 		}
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -97,18 +98,17 @@ func (h *VersionHandler) incrementVersion(w http.ResponseWriter, r *http.Request
 	var req struct {
 		Comment string `json:"comment,omitempty"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		// Optional body, ignore parse errors but close body
-		_ = r.Body.Close()
+	if err := DecodeJSON(r, &req); err != nil {
+			// Optional body, ignore parse errors
 	}
 
 	_ = r.Body.Close()
 
 	// Create versioning service and increment version
-	vs := vfs.NewVersioningService(h.vfs, nil) // We'll need to pass db properly
+	vs := vfs.NewVersioningService(h.vfs, h.db)
 	newVersion, err := vs.IncrementVersion(r.Context(), fileID)
 	if err != nil {
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 

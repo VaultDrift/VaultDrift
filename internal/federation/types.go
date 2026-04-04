@@ -37,6 +37,8 @@ type PeerAnnouncement struct {
 	PublicURL    string   `json:"public_url"`
 	PublicKey    string   `json:"public_key"`
 	Capabilities []string `json:"capabilities"`
+	Signature    string   `json:"signature,omitempty"` // Ed25519 signature of "server_id:public_url:timestamp"
+	Timestamp    int64    `json:"timestamp,omitempty"` // Unix seconds
 }
 
 // ShareRequest is sent to request access to a shared file

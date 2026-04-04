@@ -18,9 +18,9 @@ func NewTrashService(vfs *VFS, db *db.Manager) *TrashService {
 	return &TrashService{vfs: vfs, db: db}
 }
 
-// List returns all items in trash for a user.
-func (t *TrashService) List(ctx context.Context, userID string) ([]*db.File, error) {
-	return t.vfs.ListTrash(ctx, userID)
+// List returns trashed items for a user with pagination.
+func (t *TrashService) List(ctx context.Context, userID string, limit, offset int) ([]*db.File, error) {
+	return t.vfs.ListTrash(ctx, userID, limit, offset)
 }
 
 // Restore restores an item from trash.
@@ -30,7 +30,7 @@ func (t *TrashService) Restore(ctx context.Context, fileID string) error {
 
 // Empty permanently deletes all items in trash for a user.
 func (t *TrashService) Empty(ctx context.Context, userID string) error {
-	items, err := t.vfs.ListTrash(ctx, userID)
+	items, err := t.vfs.ListTrash(ctx, userID, 0, 0) // load all items
 	if err != nil {
 		return err
 	}

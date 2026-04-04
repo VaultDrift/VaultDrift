@@ -18,7 +18,17 @@ type Config struct {
 	Users      UsersConfig      `yaml:"users"`
 	SMTP       SMTPConfig       `yaml:"smtp"`
 	Logging    LoggingConfig    `yaml:"logging"`
+	Tracing    TracingConfig    `yaml:"tracing"`
 	Federation FederationConfig `yaml:"federation"`
+}
+
+// TracingConfig holds OpenTelemetry tracing configuration.
+type TracingConfig struct {
+	Enabled      bool    `yaml:"enabled" env:"TRACING_ENABLED"`
+	Exporter     string  `yaml:"exporter" env:"TRACING_EXPORTER"`       // "otlp", "stdout", "jaeger"
+	OTLPEndpoint string  `yaml:"otlp_endpoint" env:"OTEL_EXPORTER_OTLP_ENDPOINT"`
+	ServiceName  string  `yaml:"service_name" env:"OTEL_SERVICE_NAME"`
+	SampleRate   float64 `yaml:"sample_rate" env:"OTEL_TRACES_SAMPLER_ARG"` // 0.0 to 1.0
 }
 
 // ServerConfig holds HTTP server configuration.
@@ -29,8 +39,10 @@ type ServerConfig struct {
 	BaseURL      string            `yaml:"base_url"`
 	RateLimit    RateLimitConfig   `yaml:"rate_limit"`
 	ReadTimeout  time.Duration     `yaml:"read_timeout"`
+	Sharing      SharingConfig     `yaml:"sharing"`
 	WriteTimeout time.Duration     `yaml:"write_timeout"`
-	IdleTimeout  time.Duration     `yaml:"idle_timeout"`
+	IdleTimeout    time.Duration     `yaml:"idle_timeout"`
+	AllowedOrigins []string          `yaml:"allowed_origins"`
 }
 
 // RateLimitConfig holds rate limiting configuration.
@@ -241,6 +253,13 @@ func DefaultConfig() *Config {
 			Enabled:       false, // Disabled by default
 			AutoDiscovery: false,
 			TrustedPeers:  []string{},
+		},
+		Tracing: TracingConfig{
+			Enabled:      false,
+			Exporter:     "stdout",
+			OTLPEndpoint: "http://localhost:4318",
+			ServiceName:  "vaultdrift",
+			SampleRate:   1.0,
 		},
 	}
 }

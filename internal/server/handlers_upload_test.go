@@ -1,9 +1,9 @@
 package server
 
 import (
+	"encoding/json"
 	"bytes"
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"

@@ -128,7 +128,7 @@ func SecurityHeadersMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'")
 		// HSTS - only set if request is HTTPS (detected via X-Forwarded-Proto header or TLS state)
 		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
@@ -160,7 +160,7 @@ func NewRateLimitMiddleware(limit int, window time.Duration) *RateLimitMiddlewar
 // Limit returns the rate limiting middleware handler.
 func (rl *RateLimitMiddleware) Limit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		clientID := r.RemoteAddr // Could use API key or user ID for better tracking
+		clientID := getRateLimitClientID(r)
 
 		now := time.Now()
 		cutoff := now.Add(-rl.window)
@@ -209,4 +209,13 @@ func (rl *RateLimitMiddleware) cleanupOldClients(now time.Time) {
 			delete(rl.requests, clientID)
 		}
 	}
+}
+
+// getRateLimitClientID returns a client identifier for rate limiting.
+// Uses authenticated user ID when available, falls back to remote address.
+func getRateLimitClientID(r *http.Request) string {
+	if uid := GetUserIDFromRequest(r); uid != "" {
+		return "user:" + uid
+	}
+	return r.RemoteAddr
 }

@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -44,6 +46,7 @@ type EventNotifier struct {
 	subscribers map[string]*EventSubscriber
 	mu          sync.RWMutex
 	eventChan   chan *SSEEvent
+	stop        chan struct{}
 }
 
 // EventSubscriber represents a subscriber to events
@@ -63,6 +66,7 @@ func NewEventNotifier(vfsService *vfs.VFS, database *db.Manager) *EventNotifier 
 		db:          database,
 		subscribers: make(map[string]*EventSubscriber),
 		eventChan:   make(chan *SSEEvent, 256),
+		stop:        make(chan struct{}),
 	}
 
 	go n.eventLoop()
@@ -162,7 +166,20 @@ func (n *EventNotifier) NotifyFileChange(userID, folderID, fileID, eventType str
 
 // eventLoop processes events and distributes to subscribers
 func (n *EventNotifier) eventLoop() {
-	for event := range n.eventChan {
+	for {
+		select {
+		case <-n.stop:
+			return
+		case event, ok := <-n.eventChan:
+			if !ok {
+				return
+			}
+			n.processEvent(event)
+		}
+	}
+}
+
+func (n *EventNotifier) processEvent(event *SSEEvent) {
 		n.mu.RLock()
 		subscribers := make([]*EventSubscriber, 0, len(n.subscribers))
 		for _, sub := range n.subscribers {
@@ -198,7 +215,11 @@ func (n *EventNotifier) eventLoop() {
 				// Subscriber buffer full, drop event
 			}
 		}
-	}
+}
+
+// Close stops the event loop goroutine.
+func (n *EventNotifier) Close() {
+	close(n.stop)
 }
 
 // RegisterRoutes registers SSE routes
@@ -222,7 +243,6 @@ func (n *EventNotifier) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -315,5 +335,11 @@ func (n *EventNotifier) HandleLongPoll(w http.ResponseWriter, r *http.Request) {
 }
 
 func generateSubscriberID() string {
-	return "sub_" + generateRandomString(12)
+	s, err := generateRandomString(12)
+	if err != nil {
+		b := make([]byte, 6)
+		_, _ = rand.Read(b)
+		s = hex.EncodeToString(b)
+	}
+	return "sub_" + s
 }

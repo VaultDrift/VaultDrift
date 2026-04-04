@@ -2,8 +2,7 @@ package db
 
 import (
 	"context"
-	"fmt"
-	"strings"
+	"encoding/json"
 	"time"
 )
 
@@ -165,7 +164,11 @@ func (m *Manager) GetFederatedShare(ctx context.Context, token string) (*Federat
 	return share, nil
 }
 
-// joinCapabilities joins capability strings
+// joinCapabilities joins capability strings into a JSON array string.
 func joinCapabilities(caps []string) string {
-	return fmt.Sprintf("[%s]", strings.Join(caps, ","))
+	data, err := json.Marshal(caps)
+	if err != nil {
+		return "[]"
+	}
+	return string(data)
 }

@@ -1,7 +1,8 @@
 package server
 
 import (
-	"encoding/json"
+	"encoding/base64"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -21,6 +22,20 @@ func NewFederationHandler(fed *federation.Manager) *FederationHandler {
 	return &FederationHandler{fed: fed}
 }
 
+// isAdmin checks if the current user has admin role.
+func (h *FederationHandler) isAdmin(r *http.Request) bool {
+	return IsAdmin(r)
+}
+
+// requireAdmin checks admin role and returns true if authorized.
+func (h *FederationHandler) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
+	if !h.isAdmin(r) {
+		ErrorResponse(w, http.StatusForbidden, "Admin access required")
+		return false
+	}
+	return true
+}
+
 // RegisterRoutes registers federation routes
 func (h *FederationHandler) RegisterRoutes(mux *http.ServeMux, auth func(http.Handler) http.Handler) {
 	// Internal federation endpoints (require auth)
@@ -38,6 +53,10 @@ func (h *FederationHandler) RegisterRoutes(mux *http.ServeMux, auth func(http.Ha
 }
 
 func (h *FederationHandler) handleGetConfig(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAdmin(w, r) {
+		return
+	}
+
 	if !h.fed.IsEnabled() {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"enabled": false,
@@ -57,6 +76,10 @@ func (h *FederationHandler) handleGetConfig(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *FederationHandler) handleListPeers(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAdmin(w, r) {
+		return
+	}
+
 	if !h.fed.IsEnabled() {
 		http.Error(w, "Federation not enabled", http.StatusServiceUnavailable)
 		return
@@ -69,6 +92,10 @@ func (h *FederationHandler) handleListPeers(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *FederationHandler) handleAddPeer(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAdmin(w, r) {
+		return
+	}
+
 	if !h.fed.IsEnabled() {
 		http.Error(w, "Federation not enabled", http.StatusServiceUnavailable)
 		return
@@ -82,7 +109,7 @@ func (h *FederationHandler) handleAddPeer(w http.ResponseWriter, r *http.Request
 		Capabilities []string `json:"capabilities"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := DecodeJSON(r, &req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
@@ -102,7 +129,7 @@ func (h *FederationHandler) handleAddPeer(w http.ResponseWriter, r *http.Request
 	}
 
 	if err := h.fed.AddPeer(r.Context(), peer); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
@@ -110,6 +137,10 @@ func (h *FederationHandler) handleAddPeer(w http.ResponseWriter, r *http.Request
 }
 
 func (h *FederationHandler) handleRemovePeer(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAdmin(w, r) {
+		return
+	}
+
 	if !h.fed.IsEnabled() {
 		http.Error(w, "Federation not enabled", http.StatusServiceUnavailable)
 		return
@@ -122,7 +153,7 @@ func (h *FederationHandler) handleRemovePeer(w http.ResponseWriter, r *http.Requ
 	}
 
 	if err := h.fed.RemovePeer(r.Context(), peerID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
@@ -130,6 +161,10 @@ func (h *FederationHandler) handleRemovePeer(w http.ResponseWriter, r *http.Requ
 }
 
 func (h *FederationHandler) handleCreateInvite(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAdmin(w, r) {
+		return
+	}
+
 	if !h.fed.IsEnabled() {
 		http.Error(w, "Federation not enabled", http.StatusServiceUnavailable)
 		return
@@ -139,7 +174,7 @@ func (h *FederationHandler) handleCreateInvite(w http.ResponseWriter, r *http.Re
 		ExpiresInHours int `json:"expires_in_hours"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := DecodeJSON(r, &req); err != nil {
 		req.ExpiresInHours = 24 // Default 24 hours
 	}
 
@@ -152,7 +187,7 @@ func (h *FederationHandler) handleCreateInvite(w http.ResponseWriter, r *http.Re
 
 	invite, err := h.fed.CreateInvite(r.Context(), "", time.Duration(req.ExpiresInHours)*time.Hour)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
@@ -183,7 +218,7 @@ func (h *FederationHandler) handleDiscover(w http.ResponseWriter, r *http.Reques
 	}
 
 	var announcement federation.PeerAnnouncement
-	if err := json.NewDecoder(r.Body).Decode(&announcement); err != nil {
+	if err := DecodeJSON(r, &announcement); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
@@ -194,14 +229,45 @@ func (h *FederationHandler) handleDiscover(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Require a valid signature
+	if announcement.Signature == "" || announcement.Timestamp == 0 {
+		http.Error(w, "Missing signature or timestamp", http.StatusBadRequest)
+		return
+	}
+
+	// Verify timestamp is within 5 minutes to prevent replay attacks
+	now := time.Now().Unix()
+	const maxSkew int64 = 300 // 5 minutes
+	if announcement.Timestamp > now+maxSkew || announcement.Timestamp < now-maxSkew {
+		http.Error(w, "Stale or future timestamp", http.StatusBadRequest)
+		return
+	}
+
+	// Verify the Ed25519 signature over "server_id:public_url:timestamp"
+	sigBytes, err := base64.StdEncoding.DecodeString(announcement.Signature)
+	if err != nil {
+		http.Error(w, "Invalid signature encoding", http.StatusBadRequest)
+		return
+	}
+	message := []byte(fmt.Sprintf("%s:%s:%d", announcement.ServerID, announcement.PublicURL, announcement.Timestamp))
+	if err := federation.VerifyMessage(announcement.PublicKey, message, sigBytes); err != nil {
+		http.Error(w, "Invalid signature", http.StatusUnauthorized)
+		return
+	}
+
 	// Don't add self
 	if announcement.ServerID == h.fed.GetConfig().ServerID {
 		http.Error(w, "Cannot add self", http.StatusBadRequest)
 		return
 	}
 
-	// Add as peer (if auto-discovery is enabled or manually approved)
-	// For now, add automatically
+	// Check if auto-discovery is enabled
+	if !h.fed.GetConfig().AutoDiscovery {
+		http.Error(w, "Auto-discovery not enabled", http.StatusForbidden)
+		return
+	}
+
+	// Add as peer
 	peer := &db.FederationPeer{
 		ID:           announcement.ServerID,
 		Name:         announcement.Name,
@@ -236,7 +302,7 @@ func (h *FederationHandler) handleMessage(w http.ResponseWriter, r *http.Request
 	}
 
 	var msg federation.FederationMessage
-	if err := json.NewDecoder(r.Body).Decode(&msg); err != nil {
+	if err := DecodeJSON(r, &msg); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
@@ -269,13 +335,13 @@ func (h *FederationHandler) handleJoin(w http.ResponseWriter, r *http.Request) {
 		PeerInfo federation.PeerAnnouncement `json:"peer_info"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := DecodeJSON(r, &req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
 
 	if err := h.fed.AcceptInvite(r.Context(), req.Token, &req.PeerInfo); err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -283,12 +349,17 @@ func (h *FederationHandler) handleJoin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FederationHandler) handleShareRequest(w http.ResponseWriter, r *http.Request, msg *federation.FederationMessage) {
-	// Handle share request from peer
-	// This would validate the request and return a download URL
-	writeJSON(w, http.StatusOK, map[string]string{"status": "processing"})
+	// Federation share requests are not yet implemented
+	writeJSON(w, http.StatusNotImplemented, map[string]string{
+		"status":  "not_implemented",
+		"message": "federation share requests are not yet supported",
+	})
 }
 
 func (h *FederationHandler) handleSyncRequest(w http.ResponseWriter, r *http.Request, msg *federation.FederationMessage) {
-	// Handle sync request from peer
-	writeJSON(w, http.StatusOK, map[string]string{"status": "processing"})
+	// Federation sync requests are not yet implemented
+	writeJSON(w, http.StatusNotImplemented, map[string]string{
+		"status":  "not_implemented",
+		"message": "federation sync requests are not yet supported",
+	})
 }

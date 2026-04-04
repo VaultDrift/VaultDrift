@@ -153,6 +153,22 @@ func setValue(field reflect.Value, value string) error {
 			return fmt.Errorf("invalid float: %s", value)
 		}
 		field.SetFloat(f)
+	case reflect.Slice:
+		elemType := field.Type().Elem()
+		if elemType.Kind() != reflect.String {
+			return fmt.Errorf("unsupported slice type: %s", field.Type())
+		}
+		cleaned := strings.Trim(value, "[]")
+		if cleaned == "" {
+			field.Set(reflect.MakeSlice(field.Type(), 0, 0))
+		} else {
+			items := strings.Split(cleaned, ",")
+			slice := reflect.MakeSlice(field.Type(), len(items), len(items))
+			for i, item := range items {
+				slice.Index(i).SetString(strings.TrimSpace(item))
+			}
+			field.Set(slice)
+		}
 	default:
 		return fmt.Errorf("unsupported type: %s", field.Type())
 	}
@@ -417,7 +433,7 @@ func formatDuration(d interface{}) string {
 	case int64:
 		secs := v / 1e9
 		if secs >= 86400 {
-			return fmt.Sprintf("%dh", secs/86400*24)
+			return fmt.Sprintf("%dd", secs/86400)
 		}
 		if secs >= 3600 {
 			return fmt.Sprintf("%dh", secs/3600)

@@ -35,7 +35,7 @@ export interface Share {
   token?: string;
   password?: string;
   expires_at?: string;
-  expires_in_days?: number;
+  expires_days?: number;
   max_downloads?: number;
   download_count: number;
   allow_upload: boolean;
@@ -46,13 +46,16 @@ export interface Share {
   has_password?: boolean;
 }
 
-export interface UploadProgress {
+export interface ReceivedShare {
   id: string;
-  file: File;
-  progress: number;
-  status: 'pending' | 'uploading' | 'completed' | 'error';
-  speed: number;
-  eta: number;
+  file_id: string;
+  file_name: string;
+  shared_by: string;
+  share_type: 'link' | 'user';
+  permission: string;
+  created_at: string;
+  expires_at?: string;
+  is_active: boolean;
 }
 
 export interface WebSocketEvent {

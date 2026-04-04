@@ -181,7 +181,16 @@ func TestTracingResponseWriter(t *testing.T) {
 		statusCode:     http.StatusOK,
 	}
 
-	// Test Write
+	// Test WriteHeader before Write
+	trw.WriteHeader(http.StatusNotFound)
+	if trw.statusCode != http.StatusNotFound {
+		t.Errorf("Expected status %d, got %d", http.StatusNotFound, trw.statusCode)
+	}
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Expected recorder status %d, got %d", http.StatusNotFound, rec.Code)
+	}
+
+	// Test Write after WriteHeader
 	n, err := trw.Write([]byte("hello"))
 	if err != nil {
 		t.Errorf("Write failed: %v", err)
@@ -193,13 +202,10 @@ func TestTracingResponseWriter(t *testing.T) {
 		t.Errorf("Expected written=5, got %d", trw.written)
 	}
 
-	// Test WriteHeader
-	trw.WriteHeader(http.StatusNotFound)
+	// Subsequent WriteHeader should be ignored (headers already sent)
+	trw.WriteHeader(http.StatusOK)
 	if trw.statusCode != http.StatusNotFound {
-		t.Errorf("Expected status %d, got %d", http.StatusNotFound, trw.statusCode)
-	}
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("Expected recorder status %d, got %d", http.StatusNotFound, rec.Code)
+		t.Errorf("Expected status to remain %d after duplicate WriteHeader, got %d", http.StatusNotFound, trw.statusCode)
 	}
 }
 

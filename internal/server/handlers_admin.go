@@ -1,33 +1,42 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/pprof"
-	"slices"
+	"log"
+	"runtime"
 	"strconv"
 	"time"
 
 	"github.com/vaultdrift/vaultdrift/internal/auth"
 	"github.com/vaultdrift/vaultdrift/internal/db"
+	"github.com/vaultdrift/vaultdrift/internal/storage"
+	"github.com/vaultdrift/vaultdrift/internal/worker"
 )
 
 // AdminHandler handles administrative operations.
 type AdminHandler struct {
-	db      *db.Manager
-	authSvc *auth.Service
+	db        *db.Manager
+	authSvc   *auth.Service
+	storage   storage.Backend
+	workers   *worker.Manager
 }
 
 // NewAdminHandler creates a new admin handler.
-func NewAdminHandler(database *db.Manager, authService *auth.Service) *AdminHandler {
+func NewAdminHandler(database *db.Manager, authService *auth.Service, store storage.Backend, workers *worker.Manager) *AdminHandler {
 	return &AdminHandler{
 		db:      database,
 		authSvc: authService,
+		storage: store,
+		workers: workers,
 	}
 }
 
 // RegisterRoutes registers admin routes (admin only).
 func (h *AdminHandler) RegisterRoutes(mux *http.ServeMux, auth func(http.Handler) http.Handler) {
+	// System health
+	mux.Handle("GET /api/v1/admin/health", auth(http.HandlerFunc(h.getSystemHealth)))
+
 	// System stats
 	mux.Handle("GET /api/v1/admin/stats", auth(http.HandlerFunc(h.getSystemStats)))
 
@@ -49,35 +58,77 @@ func (h *AdminHandler) RegisterRoutes(mux *http.ServeMux, auth func(http.Handler
 	h.registerPprofRoutes(mux, auth)
 }
 
+// requireAdmin wraps an http.HandlerFunc with an admin role check.
+func (h *AdminHandler) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !h.isAdmin(r) {
+			ErrorResponse(w, http.StatusForbidden, "Admin access required")
+			return
+		}
+		next(w, r)
+	}
+}
+
 // registerPprofRoutes registers pprof profiling endpoints.
 func (h *AdminHandler) registerPprofRoutes(mux *http.ServeMux, auth func(http.Handler) http.Handler) {
 	// CPU profile
-	mux.Handle("GET /api/v1/admin/debug/pprof/", auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pprof.Index(w, r)
-	})))
-	mux.Handle("GET /api/v1/admin/debug/pprof/cmdline", auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pprof.Cmdline(w, r)
-	})))
-	mux.Handle("GET /api/v1/admin/debug/pprof/profile", auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pprof.Profile(w, r)
-	})))
-	mux.Handle("GET /api/v1/admin/debug/pprof/symbol", auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pprof.Symbol(w, r)
-	})))
-	mux.Handle("POST /api/v1/admin/debug/pprof/symbol", auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pprof.Symbol(w, r)
-	})))
-	mux.Handle("GET /api/v1/admin/debug/pprof/trace", auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pprof.Trace(w, r)
-	})))
+	mux.Handle("GET /api/v1/admin/debug/pprof/", auth(http.HandlerFunc(h.requireAdmin(pprof.Index))))
+	mux.Handle("GET /api/v1/admin/debug/pprof/cmdline", auth(http.HandlerFunc(h.requireAdmin(pprof.Cmdline))))
+	mux.Handle("GET /api/v1/admin/debug/pprof/profile", auth(http.HandlerFunc(h.requireAdmin(pprof.Profile))))
+	mux.Handle("GET /api/v1/admin/debug/pprof/symbol", auth(http.HandlerFunc(h.requireAdmin(pprof.Symbol))))
+	mux.Handle("POST /api/v1/admin/debug/pprof/symbol", auth(http.HandlerFunc(h.requireAdmin(pprof.Symbol))))
+	mux.Handle("GET /api/v1/admin/debug/pprof/trace", auth(http.HandlerFunc(h.requireAdmin(pprof.Trace))))
 
 	// Memory and goroutine profiles
-	mux.Handle("GET /api/v1/admin/debug/pprof/allocs", auth(http.HandlerFunc(pprof.Handler("allocs").ServeHTTP)))
-	mux.Handle("GET /api/v1/admin/debug/pprof/block", auth(http.HandlerFunc(pprof.Handler("block").ServeHTTP)))
-	mux.Handle("GET /api/v1/admin/debug/pprof/goroutine", auth(http.HandlerFunc(pprof.Handler("goroutine").ServeHTTP)))
-	mux.Handle("GET /api/v1/admin/debug/pprof/heap", auth(http.HandlerFunc(pprof.Handler("heap").ServeHTTP)))
-	mux.Handle("GET /api/v1/admin/debug/pprof/mutex", auth(http.HandlerFunc(pprof.Handler("mutex").ServeHTTP)))
-	mux.Handle("GET /api/v1/admin/debug/pprof/threadcreate", auth(http.HandlerFunc(pprof.Handler("threadcreate").ServeHTTP)))
+	mux.Handle("GET /api/v1/admin/debug/pprof/allocs", auth(http.HandlerFunc(h.requireAdmin(pprof.Handler("allocs").ServeHTTP))))
+	mux.Handle("GET /api/v1/admin/debug/pprof/block", auth(http.HandlerFunc(h.requireAdmin(pprof.Handler("block").ServeHTTP))))
+	mux.Handle("GET /api/v1/admin/debug/pprof/goroutine", auth(http.HandlerFunc(h.requireAdmin(pprof.Handler("goroutine").ServeHTTP))))
+	mux.Handle("GET /api/v1/admin/debug/pprof/heap", auth(http.HandlerFunc(h.requireAdmin(pprof.Handler("heap").ServeHTTP))))
+	mux.Handle("GET /api/v1/admin/debug/pprof/mutex", auth(http.HandlerFunc(h.requireAdmin(pprof.Handler("mutex").ServeHTTP))))
+	mux.Handle("GET /api/v1/admin/debug/pprof/threadcreate", auth(http.HandlerFunc(h.requireAdmin(pprof.Handler("threadcreate").ServeHTTP))))
+}
+
+// getSystemHealth returns system health status.
+func (h *AdminHandler) getSystemHealth(w http.ResponseWriter, r *http.Request) {
+	if !h.isAdmin(r) {
+		ErrorResponse(w, http.StatusForbidden, "Admin access required")
+		return
+	}
+
+	// Check database connectivity
+	dbStatus := "healthy"
+	if err := h.db.Ping(r.Context()); err != nil {
+		dbStatus = "unhealthy"
+	}
+
+	// Check storage backend
+	storageStatus := "healthy"
+	if _, err := h.storage.Stats(r.Context()); err != nil {
+		storageStatus = "unhealthy"
+	}
+
+	status := "healthy"
+	if dbStatus != "healthy" || storageStatus != "healthy" {
+		status = "degraded"
+	}
+
+	// System metrics
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+
+	SuccessResponse(w, map[string]any{
+		"status":   status,
+		"database": dbStatus,
+		"storage":  storageStatus,
+		"system": map[string]any{
+			"goroutines":       runtime.NumGoroutine(),
+			"memory_alloc_mb":  memStats.Alloc / 1024 / 1024,
+			"memory_sys_mb":    memStats.Sys / 1024 / 1024,
+			"gc_count":         memStats.NumGC,
+			"cpu_cores":        runtime.NumCPU(),
+		},
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	})
 }
 
 // getSystemStats returns system statistics.
@@ -92,11 +143,48 @@ func (h *AdminHandler) getSystemStats(w http.ResponseWriter, r *http.Request) {
 	dbStats := h.db.Stats()
 
 	// Get user counts
-	totalUsers, _ := h.db.CountUsersByStatus(r.Context(), "")
-	activeUsers, _ := h.db.CountUsersByStatus(r.Context(), "active")
+	totalUsers, err := h.db.CountUsersByStatus(r.Context(), "")
+	if err != nil {
+		log.Printf("admin stats: CountUsersByStatus: %v", err)
+	}
+	activeUsers, err := h.db.CountUsersByStatus(r.Context(), "active")
+	if err != nil {
+		log.Printf("admin stats: CountUsersByStatus(active): %v", err)
+	}
 
-	// Get storage stats (would need storage backend integration)
-	// For now, return basic stats
+	// Get storage backend stats
+	storageStats, _ := h.storage.Stats(r.Context())
+	var totalStorageBytes int64
+	if storageStats != nil {
+		totalStorageBytes = storageStats.TotalBytes
+	}
+
+	// Get file counts and total bytes
+	totalFiles, err := h.db.CountFiles(r.Context())
+	if err != nil {
+		log.Printf("admin stats: CountFiles: %v", err)
+	}
+	totalBytes, err := h.db.SumFileBytes(r.Context())
+	if err != nil {
+		log.Printf("admin stats: SumFileBytes: %v", err)
+	}
+
+	// Get share counts
+	activeShares, err := h.db.CountActiveShares(r.Context())
+	if err != nil {
+		log.Printf("admin stats: CountActiveShares: %v", err)
+	}
+
+	// Get chunk counts
+	totalChunks, err := h.db.GetTotalChunkCount(r.Context())
+	if err != nil {
+		log.Printf("admin stats: GetTotalChunkCount: %v", err)
+	}
+	totalChunkSize, err := h.db.GetTotalChunkSize(r.Context())
+	if err != nil {
+		log.Printf("admin stats: GetTotalChunkSize: %v", err)
+	}
+
 	stats := map[string]any{
 		"database": map[string]any{
 			"max_open_connections": dbStats.MaxOpenConnections,
@@ -108,6 +196,14 @@ func (h *AdminHandler) getSystemStats(w http.ResponseWriter, r *http.Request) {
 		"users": map[string]int64{
 			"total":  totalUsers,
 			"active": activeUsers,
+		},
+		"storage": map[string]any{
+			"total_files":       totalFiles,
+			"total_bytes":       totalBytes,
+			"total_chunks":       totalChunks,
+			"total_chunk_size":  totalChunkSize,
+			"active_shares":    activeShares,
+			"storage_backend": totalStorageBytes,
 		},
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	}
@@ -178,7 +274,7 @@ func (h *AdminHandler) createUser(w http.ResponseWriter, r *http.Request) {
 		Role     string `json:"role"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := DecodeJSON(r, &req); err != nil {
 		ErrorResponse(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -209,8 +305,7 @@ func (h *AdminHandler) createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	SuccessResponse(w, map[string]string{
+	CreatedResponse(w, map[string]string{
 		"message": "User created successfully",
 		"user_id": user.ID,
 	})
@@ -271,7 +366,7 @@ func (h *AdminHandler) updateUser(w http.ResponseWriter, r *http.Request) {
 		ResetPassword string `json:"reset_password,omitempty"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := DecodeJSON(r, &req); err != nil {
 		ErrorResponse(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -331,7 +426,7 @@ func (h *AdminHandler) deleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Prevent self-deletion
-	currentUserID := GetUserID(r)
+	currentUserID := GetUserIDFromRequest(r)
 	if userID == currentUserID {
 		ErrorResponse(w, http.StatusBadRequest, "Cannot delete yourself")
 		return
@@ -396,8 +491,16 @@ func (h *AdminHandler) runGC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// This would trigger the garbage collector worker
-	// For now, return a placeholder
+	if h.workers != nil {
+		if err := h.workers.QueueGC(worker.GCSpec{
+			Type:      "orphaned-chunks",
+			OlderThan: time.Now().Add(-24 * time.Hour),
+		}); err != nil {
+			ErrorResponse(w, http.StatusInternalServerError, "Failed to queue GC job")
+			return
+		}
+	}
+
 	SuccessResponse(w, map[string]string{
 		"message": "GC triggered",
 		"status":  "running",
@@ -411,8 +514,16 @@ func (h *AdminHandler) runCleanup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// This would trigger cleanup workers (orphaned chunks, expired shares, etc.)
-	// For now, return a placeholder
+	if h.workers != nil {
+		if err := h.workers.QueueGC(worker.GCSpec{
+			Type:      "trash",
+			OlderThan: time.Now().Add(-30 * 24 * time.Hour),
+		}); err != nil {
+			ErrorResponse(w, http.StatusInternalServerError, "Failed to queue cleanup job")
+			return
+		}
+	}
+
 	SuccessResponse(w, map[string]string{
 		"message": "Cleanup triggered",
 		"status":  "running",
@@ -421,15 +532,5 @@ func (h *AdminHandler) runCleanup(w http.ResponseWriter, r *http.Request) {
 
 // isAdmin checks if the current user has admin role.
 func (h *AdminHandler) isAdmin(r *http.Request) bool {
-	return slices.Contains(GetRoles(r), "admin")
-}
-
-// GetRoles extracts user roles from request context.
-func GetRoles(r *http.Request) []string {
-	if v := r.Context().Value("roles"); v != nil {
-		if roles, ok := v.([]string); ok {
-			return roles
-		}
-	}
-	return []string{}
+	return IsAdmin(r)
 }

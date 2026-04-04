@@ -5,7 +5,7 @@ import (
 )
 
 // Schema version for migrations.
-const CurrentSchemaVersion = 2
+const CurrentSchemaVersion = 3
 
 // migrate runs database migrations to bring the schema to the current version.
 func (m *Manager) migrate() error {
@@ -48,6 +48,8 @@ func (m *Manager) runMigration(version int) error {
 		return m.migrationV1()
 	case 2:
 		return m.migrationV2()
+	case 3:
+		return m.migrationV3()
 	default:
 		return fmt.Errorf("unknown migration version: %d", version)
 	}
@@ -347,5 +349,26 @@ func (m *Manager) migrationV2() error {
 		// Column might already exist (if upgrading from older version)
 		return nil
 	}
+	return nil
+}
+
+// migrationV3 adds composite indexes for common filtered/sorted queries.
+func (m *Manager) migrationV3() error {
+	indexes := []string{
+		`CREATE INDEX IF NOT EXISTS idx_files_user_trashed ON files(user_id, is_trashed)`,
+		`CREATE INDEX IF NOT EXISTS idx_files_user_trashed_trashed_at ON files(user_id, is_trashed, trashed_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_files_user_type_updated ON files(user_id, is_trashed, type, updated_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_shares_created_by_active ON shares(created_by, is_active)`,
+		`CREATE INDEX IF NOT EXISTS idx_shares_shared_with_active ON shares(shared_with, is_active)`,
+		`CREATE INDEX IF NOT EXISTS idx_shares_file_active ON shares(file_id, is_active)`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_user_created ON audit_log(user_id, created_at)`,
+	}
+
+	for _, idx := range indexes {
+		if _, err := m.db.Exec(idx); err != nil {
+			return fmt.Errorf("failed to create index: %w\nQuery: %s", err, idx)
+		}
+	}
+
 	return nil
 }

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/vaultdrift/vaultdrift/internal/auth"
@@ -26,6 +25,9 @@ func NewUserHandler(database *db.Manager, authService *auth.Service) *UserHandle
 func (h *UserHandler) RegisterRoutes(mux *http.ServeMux, middleware *AuthMiddleware) {
 	// Get user profile
 	mux.Handle("GET /api/v1/user/profile", middleware.Authenticate(middleware.RequireAuth(http.HandlerFunc(h.getProfile))))
+
+	// Alias: frontend also calls /users/me
+	mux.Handle("GET /api/v1/users/me", middleware.Authenticate(middleware.RequireAuth(http.HandlerFunc(h.getProfile))))
 
 	// Update user profile
 	mux.Handle("PUT /api/v1/user/profile", middleware.Authenticate(middleware.RequireAuth(http.HandlerFunc(h.updateProfile))))
@@ -79,7 +81,7 @@ func (h *UserHandler) updateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req updateProfileRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := DecodeJSON(r, &req); err != nil {
 		ErrorResponse(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -122,13 +124,18 @@ func (h *UserHandler) changePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req changePasswordRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := DecodeJSON(r, &req); err != nil {
 		ErrorResponse(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
 	if req.CurrentPassword == "" || req.NewPassword == "" {
 		ErrorResponse(w, http.StatusBadRequest, "Current and new password required")
+		return
+	}
+
+	if len(req.NewPassword) < 8 {
+		ErrorResponse(w, http.StatusBadRequest, "New password must be at least 8 characters")
 		return
 	}
 
@@ -153,10 +160,8 @@ func (h *UserHandler) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update password
-	if err := h.db.UpdateUser(r.Context(), userID, map[string]any{
-		"password_hash": newHash,
-	}); err != nil {
+	// Update password (also clears password_change_required flag)
+	if err := h.db.UpdatePassword(r.Context(), userID, newHash); err != nil {
 		ErrorResponse(w, http.StatusInternalServerError, "Failed to update password")
 		return
 	}

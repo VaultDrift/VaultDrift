@@ -30,8 +30,8 @@ type GCResult struct {
 type GCWorker struct {
 	db      *db.Manager
 	storage interface {
-		Delete(ctx context.Context, id string) error
-	}
+	Delete(ctx context.Context, id string) error
+}
 }
 
 // NewGCWorker creates a new garbage collection worker
@@ -108,16 +108,16 @@ func (w *GCWorker) collectOrphanedChunks(ctx context.Context, spec GCSpec) (*GCR
 	return result, nil
 }
 
-// collectOldVersions removes old file versions
+// collectOldVersions removes old file versions (manifests) keeping only the latest N per file.
 func (w *GCWorker) collectOldVersions(ctx context.Context, spec GCSpec) (*GCResult, error) {
 	result := &GCResult{Type: "old-versions"}
 
 	log.Printf("Collecting versions older than %s...", spec.OlderThan)
 
-	// Query for old versions
+	// Query manifests grouped by file, keeping track of count per file
 	rows, err := w.db.Query(ctx, `
-		SELECT id, size_bytes
-		FROM file_versions
+		SELECT id, file_id, size_bytes
+		FROM manifests
 		WHERE created_at < ?
 		ORDER BY file_id, version DESC
 	`, spec.OlderThan)
@@ -130,30 +130,29 @@ func (w *GCWorker) collectOldVersions(ctx context.Context, spec GCSpec) (*GCResu
 	fileVersions := make(map[string]int)
 
 	for rows.Next() {
-		var versionID string
+		var manifestID string
+		var fileID string
 		var size int64
-		if err := rows.Scan(&versionID, &size); err != nil {
+		if err := rows.Scan(&manifestID, &fileID, &size); err != nil {
 			result.Errors = append(result.Errors, err)
-			continue
-		}
+            continue
+        }
 
-		// Keep last 5 versions per file
-		// In production, this would be configurable
-		fileID := "" // Would need to include file_id in query
-		fileVersions[fileID]++
+        // Keep last 5 versions per file
+        fileVersions[fileID]++
 
-		if fileVersions[fileID] > 5 {
-			// Delete old version
-			if err := w.deleteVersion(ctx, versionID); err != nil {
-				result.Errors = append(result.Errors, err)
-				continue
-			}
-			result.Collected++
-			result.Freed += size
-		}
-	}
+        if fileVersions[fileID] > 5 {
+            // Delete old manifest version
+            if err := w.db.DeleteManifest(ctx, manifestID); err != nil {
+                result.Errors = append(result.Errors, err)
+                continue
+            }
+            result.Collected++
+            result.Freed += size
+        }
+    }
 
-	return result, nil
+    return result, nil
 }
 
 // collectTrash permanently deletes items in trash older than retention period
@@ -170,52 +169,53 @@ func (w *GCWorker) collectTrash(ctx context.Context, spec GCSpec) (*GCResult, er
 	`, spec.OlderThan)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query trash: %w", err)
-	}
+    }
 	defer rows.Close()
 
-	for rows.Next() {
-		var fileID string
-		var size int64
-		if err := rows.Scan(&fileID, &size); err != nil {
-			result.Errors = append(result.Errors, err)
-			continue
-		}
+    for rows.Next() {
+        var fileID string
+        var size int64
+        if err := rows.Scan(&fileID, &size); err != nil {
+            result.Errors = append(result.Errors, err)
+            continue
+        }
 
-		// Delete file permanently
-		if err := w.deleteFile(ctx, fileID); err != nil {
-			result.Errors = append(result.Errors, err)
-			continue
-		}
+        // Delete file permanently (cleans up chunks)
+        if err := w.deleteFile(ctx, fileID); err != nil {
+            result.Errors = append(result.Errors, err)
+            continue
+        }
 
-		result.Collected++
-		result.Freed += size
-	}
+        result.Collected++
+        result.Freed += size
+    }
 
-	return result, nil
+    return result, nil
 }
 
-// deleteVersion deletes a file version
-func (w *GCWorker) deleteVersion(ctx context.Context, versionID string) error {
-	// Delete from storage
-	if err := w.storage.Delete(ctx, versionID); err != nil {
-		return err
-	}
-
-	// Delete from database
-	_, err := w.db.Exec(ctx, `DELETE FROM file_versions WHERE id = ?`, versionID)
-	return err
-}
-
-// deleteFile permanently deletes a file
+// deleteFile permanently deletes a file and decrements chunk ref counts
 func (w *GCWorker) deleteFile(ctx context.Context, fileID string) error {
-	// Delete from storage
-	if err := w.storage.Delete(ctx, fileID); err != nil {
-		return err
-	}
+	// Get the latest manifest to find chunk hashes
+	manifest, err := w.db.GetLatestManifest(ctx, fileID)
+	if err == nil && manifest != nil {
+		// Decrement ref count for each chunk and delete if orphaned
+		for _, chunkHash := range manifest.Chunks {
+		if err := w.db.DecrementRefCount(ctx, chunkHash); err != nil {
+				log.Printf("GC: failed to decrement ref for chunk %s: %v", chunkHash, err)
+                continue
+            }
+            // Check if chunk is now orphaned
+            chunk, err := w.db.GetChunk(ctx, chunkHash)
+            if err == nil && chunk.RefCount <= 0 {
+                _ = w.storage.Delete(ctx, chunkHash)
+                _ = w.db.DeleteChunk(ctx, chunkHash)
+            }
+        }
+    }
 
-	// Delete from database
-	_, err := w.db.Exec(ctx, `DELETE FROM files WHERE id = ?`, fileID)
-	return err
+    // Delete the file record from database
+    _, _ = w.db.Exec(ctx, `DELETE FROM files WHERE id = ?`, fileID)
+    return err
 }
 
 // Register registers the GC handler with a worker pool
@@ -225,10 +225,10 @@ func (w *GCWorker) Register(pool *WorkerPool) {
 
 // QueueGCJob queues a garbage collection job
 func QueueGCJob(pool *WorkerPool, spec GCSpec) error {
-	return pool.Submit(Job{
-		ID:       fmt.Sprintf("gc-%s-%d", spec.Type, time.Now().Unix()),
-		Type:     GCJobType,
-		Payload:  spec,
-		Priority: 1, // Low priority
-	})
+    return pool.Submit(Job{
+        ID:       fmt.Sprintf("gc-%s-%d", spec.Type, time.Now().Unix()),
+        Type:     GCJobType,
+        Payload:  spec,
+        Priority: 1, // Low priority
+    })
 }

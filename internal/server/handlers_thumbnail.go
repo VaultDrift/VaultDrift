@@ -216,6 +216,12 @@ func (h *ThumbnailHandler) generateThumbnail(ctx context.Context, fileID, mimeTy
 		return err
 	}
 
+	// Check file size before loading into memory (limit: 50MB for thumbnail generation)
+	const maxThumbnailFileSize = 50 * 1024 * 1024
+	if file.SizeBytes > maxThumbnailFileSize {
+		return fmt.Errorf("file too large for thumbnail generation (%d bytes)", file.SizeBytes)
+	}
+
 	// Reassemble file data from chunks
 	var data []byte
 	for _, hash := range manifest.Chunks {

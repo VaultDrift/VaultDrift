@@ -2,10 +2,11 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -26,6 +27,7 @@ type UploadHandler struct {
 	chunker       *chunk.Chunker
 	sessions      map[string]*UploadSession
 	sessionsMutex sync.RWMutex
+	stop         chan struct{}
 }
 
 // UploadSession represents an active upload session.
@@ -98,6 +100,7 @@ func NewUploadHandler(vfsService *vfs.VFS, database *db.Manager, store storage.B
 		storage:       store,
 		chunker:       chunk.DefaultChunker(),
 		sessions:      make(map[string]*UploadSession),
+		stop:         make(chan struct{}),
 	}
 
 	// Start cleanup goroutine
@@ -133,7 +136,7 @@ func (h *UploadHandler) createUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req createUploadRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := DecodeJSON(r, &req); err != nil {
 		ErrorResponse(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -192,8 +195,7 @@ func (h *UploadHandler) createUpload(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt:   session.ExpiresAt.Format(time.RFC3339),
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	SuccessResponse(w, resp)
+	CreatedResponse(w, resp)
 }
 
 // uploadChunk handles chunk upload.
@@ -270,20 +272,27 @@ func (h *UploadHandler) uploadChunk(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	// Limit chunk size
-	maxChunkSize := DefaultChunkSize + 1024 // Allow some buffer
+	const maxChunkSize = DefaultChunkSize + 1024 // Allow some buffer
 	if r.ContentLength > int64(maxChunkSize) {
 		ErrorResponse(w, http.StatusBadRequest, "Chunk too large")
 		return
 	}
+	if r.ContentLength <= 0 {
+		ErrorResponse(w, http.StatusBadRequest, "Missing or invalid Content-Length")
+		return
+	}
 
 	// Read chunk data with size limit
-	chunkData := make([]byte, r.ContentLength)
-	n, err := r.Body.Read(chunkData)
-	if err != nil && err.Error() != "EOF" {
+	limited := io.LimitReader(r.Body, int64(maxChunkSize))
+	chunkData, err := io.ReadAll(limited)
+	if err != nil {
 		ErrorResponse(w, http.StatusBadRequest, "Failed to read chunk data")
 		return
 	}
-	chunkData = chunkData[:n]
+	if len(chunkData) == 0 {
+		ErrorResponse(w, http.StatusBadRequest, "Empty chunk data")
+		return
+	}
 
 	// Process chunk with CDC (Content-Defined Chunking)
 	cdcChunks, cdcData, err := h.chunker.ChunkWithData(bytes.NewReader(chunkData))
@@ -342,7 +351,7 @@ func (h *UploadHandler) uploadChunk(w http.ResponseWriter, r *http.Request) {
 	session.ChunksMutex.Lock()
 	session.Chunks[chunkIndex] = &ChunkInfo{
 		Index:      chunkIndex,
-		Size:       n,
+		Size:       len(chunkData),
 		UploadedAt: time.Now(),
 	}
 	session.ChunkHashes[chunkIndex] = chunkHashes
@@ -358,7 +367,7 @@ func (h *UploadHandler) uploadChunk(w http.ResponseWriter, r *http.Request) {
 	SuccessResponse(w, map[string]any{
 		"status":           "uploaded",
 		"chunk_index":      chunkIndex,
-		"bytes_received":   n,
+		"bytes_received":   len(chunkData),
 		"cdc_chunks":       len(cdcChunks),
 		"chunk_hashes":     chunkHashes,
 	})
@@ -421,7 +430,7 @@ func (h *UploadHandler) completeUpload(w http.ResponseWriter, r *http.Request) {
 			ErrorResponse(w, http.StatusBadRequest, "Invalid file name")
 			return
 		}
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -437,7 +446,12 @@ func (h *UploadHandler) completeUpload(w http.ResponseWriter, r *http.Request) {
 	session.ChunksMutex.RUnlock()
 
 	// Create manifest for the file
-	manifestID := "manifest_" + generateRandomString(16)
+	ms, err := generateRandomString(16)
+	if err != nil {
+		InternalErrorResponse(w, fmt.Errorf("failed to generate manifest ID: %w", err))
+		return
+	}
+	manifestID := "manifest_" + ms
 	manifest := &db.Manifest{
 		ID:         manifestID,
 		FileID:     file.ID,
@@ -631,21 +645,44 @@ func (h *UploadHandler) getMissingChunksLocked(session *UploadSession) []int {
 	return missing
 }
 
-// cleanupExpiredSessions periodically removes expired upload sessions.
+// cleanupExpiredSessions periodically removes expired upload sessions and cleans up orphaned chunks.
 func (h *UploadHandler) cleanupExpiredSessions() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		now := time.Now()
-		h.sessionsMutex.Lock()
-		for id, session := range h.sessions {
-			if now.After(session.ExpiresAt) {
-				delete(h.sessions, id)
+	for {
+		select {
+		case <-h.stop:
+			return
+		case <-ticker.C:
+			now := time.Now()
+			h.sessionsMutex.Lock()
+			for id, session := range h.sessions {
+				if now.After(session.ExpiresAt) {
+					// Clean up stored chunks for expired session
+					for _, hashes := range session.ChunkHashes {
+						for _, chunkHash := range hashes {
+							if err := h.db.DecrementRefCount(context.Background(), chunkHash); err == nil {
+								chunk, err := h.db.GetChunk(context.Background(), chunkHash)
+								if err == nil && chunk.RefCount <= 0 {
+									_ = h.storage.Delete(context.Background(), chunkHash)
+									_ = h.db.DeleteChunk(context.Background(), chunkHash)
+								}
+							}
+						}
+					}
+					delete(h.sessions, id)
+				}
 			}
+			h.sessionsMutex.Unlock()
 		}
-		h.sessionsMutex.Unlock()
 	}
+}
+
+
+// Close stops the cleanup goroutine.
+func (h *UploadHandler) Close() {
+	close(h.stop)
 }
 
 // generateSessionID generates a unique session ID.

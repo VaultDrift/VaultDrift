@@ -57,6 +57,15 @@ export function AdminPage() {
     role: 'user',
     quota_bytes: 10 * 1024 * 1024 * 1024, // 10GB default
   });
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<{
+    id: string;
+    email: string;
+    role: string;
+    status: string;
+    quota_bytes: number;
+    reset_password: string;
+  } | null>(null);
 
   // Fetch users
   const { data: users, isLoading: isLoadingUsers } = useQuery({
@@ -106,6 +115,48 @@ export function AdminPage() {
     onError: () => toast.error('Failed to delete user'),
   });
 
+  // Update user mutation
+  const updateUserMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
+      adminApi.updateUser(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+      toast.success('User updated');
+      setIsEditDialogOpen(false);
+      setEditingUser(null);
+    },
+    onError: () => toast.error('Failed to update user'),
+  });
+
+  const openEditDialog = (user: { id: string; email: string; role: string; status: string; quota_bytes: number }) => {
+    setEditingUser({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      status: user.status,
+      quota_bytes: user.quota_bytes,
+      reset_password: '',
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdateUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    const data: Record<string, unknown> = {};
+    if (editingUser.email) data.email = editingUser.email;
+    if (editingUser.role) data.role = editingUser.role;
+    if (editingUser.status) data.status = editingUser.status;
+    if (editingUser.quota_bytes > 0) data.quota_bytes = editingUser.quota_bytes;
+    if (editingUser.reset_password) data.reset_password = editingUser.reset_password;
+    updateUserMutation.mutate({ id: editingUser.id, data });
+  };
+
+  const handleDeleteUser = (user: { username: string; id: string }) => {
+    if (!confirm(`Are you sure you want to delete user "${user.username}"? This action cannot be undone.`)) return;
+    deleteUserMutation.mutate(user.id);
+  };
+
   const filteredUsers = users?.filter(
     (user) =>
       user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -147,9 +198,9 @@ export function AdminPage() {
                   <Users className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{stats?.total_users || 0}</div>
+                  <div className="text-2xl font-bold">{stats?.users?.total || 0}</div>
                   <p className="text-xs text-muted-foreground">
-                    {stats?.active_users || 0} active
+                    {stats?.users?.active || 0} active
                   </p>
                 </CardContent>
               </Card>
@@ -160,9 +211,9 @@ export function AdminPage() {
                   <HardDrive className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{stats?.total_files || 0}</div>
+                  <div className="text-2xl font-bold">{stats?.storage?.total_files || 0}</div>
                   <p className="text-xs text-muted-foreground">
-                    {formatBytes(stats?.total_bytes || 0)} stored
+                    {formatBytes(stats?.storage?.total_bytes || 0)} stored
                   </p>
                 </CardContent>
               </Card>
@@ -173,9 +224,9 @@ export function AdminPage() {
                   <Activity className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{stats?.active_shares || 0}</div>
+                  <div className="text-2xl font-bold">{stats?.storage?.active_shares || 0}</div>
                   <p className="text-xs text-muted-foreground">
-                    {stats?.total_downloads || 0} downloads
+                    {stats?.storage?.total_chunks || 0} chunks
                   </p>
                 </CardContent>
               </Card>
@@ -187,10 +238,10 @@ export function AdminPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {health?.cpu_percent?.toFixed(1) || 0}%
+                    {health?.system?.goroutines || 0}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {health?.memory_used_percent?.toFixed(1) || 0}% memory
+                    {health?.system?.memory_alloc_mb || 0} MB memory
                   </p>
                 </CardContent>
               </Card>
@@ -209,8 +260,8 @@ export function AdminPage() {
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Used Storage</span>
                     <span className="font-medium">
-                      {formatBytes(stats?.total_bytes || 0)} /{' '}
-                      {formatBytes(stats?.total_quota || 0)}
+                      {formatBytes(stats?.storage?.total_bytes || 0)} /{' '}
+                      {formatBytes(Number(stats?.storage?.storage_backend) || 0)}
                     </span>
                   </div>
                   <div className="h-2 bg-muted rounded-full overflow-hidden">
@@ -218,7 +269,7 @@ export function AdminPage() {
                       className="h-full bg-primary transition-all rounded-full"
                       style={{
                         width: `${Math.min(
-                          ((stats?.total_bytes || 0) / (stats?.total_quota || 1)) * 100,
+                          ((stats?.storage?.total_bytes || 0) / (Number(stats?.storage?.storage_backend) || 1)) * 100,
                           100
                         )}%`,
                       }}
@@ -394,8 +445,8 @@ export function AdminPage() {
                             className={cn(
                               'inline-flex items-center px-2 py-1 rounded-full text-xs font-medium',
                               user.status === 'active'
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-red-100 text-red-800'
+                                ? 'bg-primary/10 text-primary'
+                                : 'bg-destructive/10 text-destructive'
                             )}
                           >
                             {user.status}
@@ -406,14 +457,19 @@ export function AdminPage() {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => openEditDialog(user)}
+                            >
                               <Edit2 className="w-4 h-4" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-destructive hover:text-destructive"
-                              onClick={() => deleteUserMutation.mutate(user.id)}
+                              onClick={() => handleDeleteUser(user)}
                               disabled={deleteUserMutation.isPending}
                             >
                               <Trash2 className="w-4 h-4" />
@@ -426,6 +482,105 @@ export function AdminPage() {
                 </TableBody>
               </Table>
             </Card>
+
+            {/* Edit User Dialog */}
+            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Edit User</DialogTitle>
+                  <DialogDescription>
+                    Update user details. Leave password blank to keep unchanged.
+                  </DialogDescription>
+                </DialogHeader>
+                {editingUser && (
+                  <form onSubmit={handleUpdateUser} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-email">Email</Label>
+                      <Input
+                        id="edit-email"
+                        type="email"
+                        value={editingUser.email}
+                        onChange={(e) =>
+                          setEditingUser({ ...editingUser, email: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-role">Role</Label>
+                        <select
+                          id="edit-role"
+                          value={editingUser.role}
+                          onChange={(e) =>
+                            setEditingUser({ ...editingUser, role: e.target.value })
+                          }
+                          className="w-full h-10 rounded-md border bg-background px-3 text-sm"
+                        >
+                          <option value="user">User</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-status">Status</Label>
+                        <select
+                          id="edit-status"
+                          value={editingUser.status}
+                          onChange={(e) =>
+                            setEditingUser({ ...editingUser, status: e.target.value })
+                          }
+                          className="w-full h-10 rounded-md border bg-background px-3 text-sm"
+                        >
+                          <option value="active">Active</option>
+                          <option value="suspended">Suspended</option>
+                          <option value="disabled">Disabled</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-quota">Quota (bytes)</Label>
+                      <Input
+                        id="edit-quota"
+                        type="number"
+                        value={editingUser.quota_bytes}
+                        onChange={(e) =>
+                          setEditingUser({ ...editingUser, quota_bytes: parseInt(e.target.value) || 0 })
+                        }
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Current: {formatBytes(editingUser.quota_bytes)}
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-password">Reset Password</Label>
+                      <Input
+                        id="edit-password"
+                        type="password"
+                        placeholder="Leave blank to keep current"
+                        value={editingUser.reset_password}
+                        onChange={(e) =>
+                          setEditingUser({ ...editingUser, reset_password: e.target.value })
+                        }
+                      />
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setIsEditDialogOpen(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button type="submit" disabled={updateUserMutation.isPending}>
+                        {updateUserMutation.isPending && (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        )}
+                        Save Changes
+                      </Button>
+                    </DialogFooter>
+                  </form>
+                )}
+              </DialogContent>
+            </Dialog>
           </TabsContent>
 
           {/* System Tab */}
@@ -434,51 +589,27 @@ export function AdminPage() {
               <Card>
                 <CardHeader>
                   <CardTitle>System Health</CardTitle>
-                  <CardDescription>Current system status</CardDescription>
+                  <CardDescription>
+                    Overall status: {health?.status || 'unknown'}
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">CPU Usage</span>
-                      <span className="font-medium">
-                        {health?.cpu_percent?.toFixed(1) || 0}%
-                      </span>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-3 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">Goroutines</p>
+                      <p className="text-2xl font-bold">{health?.system?.goroutines || 0}</p>
                     </div>
-                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-primary transition-all rounded-full"
-                        style={{ width: `${health?.cpu_percent || 0}%` }}
-                      />
+                    <div className="p-3 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">CPU Cores</p>
+                      <p className="text-2xl font-bold">{health?.system?.cpu_cores || 0}</p>
                     </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Memory Usage</span>
-                      <span className="font-medium">
-                        {health?.memory_used_percent?.toFixed(1) || 0}%
-                      </span>
+                    <div className="p-3 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">Memory Alloc</p>
+                      <p className="text-2xl font-bold">{health?.system?.memory_alloc_mb || 0} MB</p>
                     </div>
-                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-primary transition-all rounded-full"
-                        style={{ width: `${health?.memory_used_percent || 0}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Disk Usage</span>
-                      <span className="font-medium">
-                        {health?.disk_used_percent?.toFixed(1) || 0}%
-                      </span>
-                    </div>
-                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-primary transition-all rounded-full"
-                        style={{ width: `${health?.disk_used_percent || 0}%` }}
-                      />
+                    <div className="p-3 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">GC Count</p>
+                      <p className="text-2xl font-bold">{health?.system?.gc_count || 0}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -487,37 +618,36 @@ export function AdminPage() {
               <Card>
                 <CardHeader>
                   <CardTitle>Services</CardTitle>
-                  <CardDescription>Service status</CardDescription>
+                  <CardDescription>Dependency health</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {health?.services?.map((service: { name: string; status: string; latency_ms: number }) => (
+                    {['database', 'storage'].map((service) => (
                       <div
-                        key={service.name}
+                        key={service}
                         className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
                       >
                         <div className="flex items-center gap-3">
                           <div
                             className={cn(
                               'w-2 h-2 rounded-full',
-                              service.status === 'healthy'
-                                ? 'bg-green-500'
-                                : service.status === 'degraded'
-                                ? 'bg-yellow-500'
-                                : 'bg-red-500'
+                              health?.[service] === 'healthy'
+                                ? 'bg-primary'
+                                : 'bg-destructive'
                             )}
                           />
-                          <span className="font-medium capitalize">{service.name}</span>
+                          <span className="font-medium capitalize">{service}</span>
                         </div>
-                        <span className="text-sm text-muted-foreground">
-                          {service.latency_ms}ms
+                        <span className={cn(
+                          'text-xs font-medium px-2 py-1 rounded-full',
+                          health?.[service] === 'healthy'
+                            ? 'bg-primary/10 text-primary'
+                            : 'bg-destructive/10 text-destructive'
+                        )}>
+                          {String(health?.[service] || 'unknown')}
                         </span>
                       </div>
-                    )) || (
-                      <p className="text-muted-foreground text-center py-4">
-                        No service data available
-                      </p>
-                    )}
+                    ))}
                   </div>
                 </CardContent>
               </Card>

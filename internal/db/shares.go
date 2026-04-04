@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -66,8 +68,10 @@ func (m *Manager) GetShareByID(ctx context.Context, id string) (*Share, error) {
 		share.ExpiresAt = &t
 	}
 	if maxDownloads.Valid {
-		md, _ := fmt.Sscanf(maxDownloads.String, "%d", &share.MaxDownloads)
-		_ = md
+		val, err := strconv.Atoi(maxDownloads.String)
+		if err == nil {
+			share.MaxDownloads = &val
+		}
 	}
 	if sharedWith.Valid {
 		share.SharedWith = &sharedWith.String
@@ -115,8 +119,10 @@ func (m *Manager) GetShareByToken(ctx context.Context, token string) (*Share, er
 		share.ExpiresAt = &t
 	}
 	if maxDownloads.Valid {
-		md, _ := fmt.Sscanf(maxDownloads.String, "%d", &share.MaxDownloads)
-		_ = md
+		val, err := strconv.Atoi(maxDownloads.String)
+		if err == nil {
+			share.MaxDownloads = &val
+		}
 	}
 	if sharedWith.Valid {
 		share.SharedWith = &sharedWith.String
@@ -172,8 +178,10 @@ func (m *Manager) GetSharesByFile(ctx context.Context, fileID string) ([]*Share,
 			share.ExpiresAt = &t
 		}
 		if maxDownloads.Valid {
-			md, _ := fmt.Sscanf(maxDownloads.String, "%d", &share.MaxDownloads)
-			_ = md
+			val, err := strconv.Atoi(maxDownloads.String)
+			if err == nil {
+				share.MaxDownloads = &val
+			}
 		}
 		if sharedWith.Valid {
 			share.SharedWith = &sharedWith.String
@@ -200,7 +208,7 @@ func (m *Manager) GetSharesByUser(ctx context.Context, userID string) ([]*Share,
 	query := `SELECT id, file_id, created_by, share_type, token, password_hash,
 		expires_at, max_downloads, download_count, allow_upload, preview_only,
 		shared_with, permission, encrypted_key, is_active, view_count, created_at, updated_at
-	FROM shares WHERE created_by = ? ORDER BY created_at DESC`
+	FROM shares WHERE created_by = ? AND is_active = 1 ORDER BY created_at DESC`
 
 	rows, err := m.db.QueryContext(ctx, query, userID)
 	if err != nil {
@@ -236,8 +244,10 @@ func (m *Manager) GetSharesByUser(ctx context.Context, userID string) ([]*Share,
 			share.ExpiresAt = &t
 		}
 		if maxDownloads.Valid {
-			md, _ := fmt.Sscanf(maxDownloads.String, "%d", &share.MaxDownloads)
-			_ = md
+			val, err := strconv.Atoi(maxDownloads.String)
+			if err == nil {
+				share.MaxDownloads = &val
+			}
 		}
 		if sharedWith.Valid {
 			share.SharedWith = &sharedWith.String
@@ -300,8 +310,10 @@ func (m *Manager) GetReceivedShares(ctx context.Context, userID string) ([]*Shar
 			share.ExpiresAt = &t
 		}
 		if maxDownloads.Valid {
-			md, _ := fmt.Sscanf(maxDownloads.String, "%d", &share.MaxDownloads)
-			_ = md
+			val, err := strconv.Atoi(maxDownloads.String)
+			if err == nil {
+				share.MaxDownloads = &val
+			}
 		}
 		if sharedWith.Valid {
 			share.SharedWith = &sharedWith.String
@@ -329,10 +341,28 @@ func (m *Manager) UpdateShare(ctx context.Context, id string, updates map[string
 		return nil
 	}
 
+	allowedFields := map[string]bool{
+		"share_type":     true,
+		"password_hash":  true,
+		"expires_at":     true,
+		"max_downloads":  true,
+		"download_count": true,
+		"allow_upload":   true,
+		"preview_only":   true,
+		"shared_with":    true,
+		"permission":     true,
+		"encrypted_key":  true,
+		"is_active":      true,
+		"view_count":     true,
+	}
+
 	setClauses := make([]string, 0, len(updates))
 	args := make([]any, 0, len(updates)+2)
 
 	for field, value := range updates {
+		if !allowedFields[field] {
+			return fmt.Errorf("invalid update field: %s", field)
+		}
 		setClauses = append(setClauses, fmt.Sprintf("%s = ?", field))
 		if b, ok := value.(bool); ok {
 			args = append(args, boolToInt(b))
@@ -345,7 +375,7 @@ func (m *Manager) UpdateShare(ctx context.Context, id string, updates map[string
 	args = append(args, time.Now().UTC().Format(time.RFC3339))
 	args = append(args, id)
 
-	query := fmt.Sprintf("UPDATE shares SET %s WHERE id = ?", setClauses) // #nosec G201 G202 - setClauses are safe, constructed from allowed fields only
+	query := fmt.Sprintf("UPDATE shares SET %s WHERE id = ?", strings.Join(setClauses, ", ")) // #nosec G201 G202 - setClauses built from allowlisted fields only
 
 	result, err := m.db.ExecContext(ctx, query, args...)
 	if err != nil {
@@ -367,13 +397,25 @@ func (m *Manager) RevokeShare(ctx context.Context, id string) error {
 	})
 }
 
-// IncrementShareDownloadCount increments the download counter.
-func (m *Manager) IncrementShareDownloadCount(ctx context.Context, id string) error {
-	_, err := m.db.ExecContext(ctx,
-		"UPDATE shares SET download_count = download_count + 1 WHERE id = ?",
-		id,
+// IncrementShareDownloadCount atomically increments the download counter.
+// Returns false if maxDownloads limit was reached (no increment performed).
+func (m *Manager) IncrementShareDownloadCount(ctx context.Context, id string, maxDownloads *int) (bool, error) {
+	if maxDownloads == nil {
+		_, err := m.db.ExecContext(ctx,
+			"UPDATE shares SET download_count = download_count + 1 WHERE id = ?",
+			id,
+		)
+		return true, err
+	}
+	result, err := m.db.ExecContext(ctx,
+		"UPDATE shares SET download_count = download_count + 1 WHERE id = ? AND download_count < ?",
+		id, *maxDownloads,
 	)
-	return err
+	if err != nil {
+		return false, err
+	}
+	n, _ := result.RowsAffected()
+	return n > 0, nil
 }
 
 // IncrementShareViewCount increments the view counter.

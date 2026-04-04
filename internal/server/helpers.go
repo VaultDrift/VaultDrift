@@ -19,8 +19,8 @@ func sanitizeFilename(name string) string {
 		// Reject quotes that could break out of the header value
 		case r == '"':
 			sb.WriteRune('\'')
-		// Reject backslash
-		case r == '\\':
+		// Reject backslash and forward slash
+		case r == '\\' || r == '/':
 			sb.WriteRune('_')
 		// Replace other potentially dangerous chars
 		case unicode.IsControl(r):

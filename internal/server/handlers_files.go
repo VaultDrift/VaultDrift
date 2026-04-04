@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -38,8 +37,8 @@ func (h *FileHandler) RegisterRoutes(mux *http.ServeMux, auth *AuthMiddleware) {
 	// Delete file (move to trash)
 	mux.Handle("DELETE /api/v1/files/{id}", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.deleteFile))))
 
-	// Search files
-	mux.Handle("GET /api/v1/files/search", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.searchFiles))))
+	// Search files (separate prefix to avoid conflict with /api/v1/files/{id})
+	mux.Handle("GET /api/v1/search", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.searchFiles))))
 
 	// Get recent files
 	mux.Handle("GET /api/v1/files/recent", auth.Authenticate(auth.RequireAuth(http.HandlerFunc(h.recentFiles))))
@@ -83,7 +82,7 @@ func (h *FileHandler) listFiles(w http.ResponseWriter, r *http.Request) {
 
 	files, err := h.vfs.ListDirectory(r.Context(), userID, parentID, opts)
 	if err != nil {
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -114,7 +113,7 @@ func (h *FileHandler) getFile(w http.ResponseWriter, r *http.Request) {
 			ErrorResponse(w, http.StatusNotFound, "File not found")
 			return
 		}
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -144,7 +143,7 @@ func (h *FileHandler) createFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req createFileRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := DecodeJSON(r, &req); err != nil {
 		ErrorResponse(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -164,12 +163,11 @@ func (h *FileHandler) createFile(w http.ResponseWriter, r *http.Request) {
 			ErrorResponse(w, http.StatusBadRequest, "Invalid file name")
 			return
 		}
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	SuccessResponse(w, file)
+	CreatedResponse(w, file)
 
 	// Emit event for real-time sync
 	if h.events != nil {
@@ -210,7 +208,7 @@ func (h *FileHandler) updateFile(w http.ResponseWriter, r *http.Request) {
 			ErrorResponse(w, http.StatusNotFound, "File not found")
 			return
 		}
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -220,21 +218,28 @@ func (h *FileHandler) updateFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req updateFileRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := DecodeJSON(r, &req); err != nil {
 		ErrorResponse(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
 	// Handle move
 	if req.ParentID != "" {
+		// Verify target parent folder exists and belongs to the user
+		parent, err := h.vfs.GetFile(r.Context(), req.ParentID)
+		if err != nil || parent.UserID != userID {
+			ErrorResponse(w, http.StatusForbidden, "Access denied to target folder")
+			return
+		}
+
 		if err := h.vfs.Move(r.Context(), fileID, req.ParentID, req.Name); err != nil {
-			ErrorResponse(w, http.StatusInternalServerError, err.Error())
+			InternalErrorResponse(w, err)
 			return
 		}
 	} else if req.Name != "" {
 		// Just rename
 		if err := h.vfs.Rename(r.Context(), fileID, req.Name); err != nil {
-			ErrorResponse(w, http.StatusInternalServerError, err.Error())
+			InternalErrorResponse(w, err)
 			return
 		}
 	}
@@ -276,7 +281,7 @@ func (h *FileHandler) deleteFile(w http.ResponseWriter, r *http.Request) {
 			ErrorResponse(w, http.StatusNotFound, "File not found")
 			return
 		}
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -286,7 +291,7 @@ func (h *FileHandler) deleteFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.vfs.Delete(r.Context(), fileID); err != nil {
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -327,7 +332,7 @@ func (h *FileHandler) searchFiles(w http.ResponseWriter, r *http.Request) {
 
 	files, err := h.vfs.Search(r.Context(), userID, query, limit)
 	if err != nil {
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -357,7 +362,7 @@ func (h *FileHandler) recentFiles(w http.ResponseWriter, r *http.Request) {
 
 	files, err := h.vfs.Recent(r.Context(), userID, limit)
 	if err != nil {
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 

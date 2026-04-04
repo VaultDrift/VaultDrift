@@ -74,7 +74,7 @@ func (h *DownloadHandler) downloadFile(w http.ResponseWriter, r *http.Request) {
 			ErrorResponse(w, http.StatusNotFound, "File not found")
 			return
 		}
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -421,7 +421,7 @@ func (h *DownloadHandler) streamFile(w http.ResponseWriter, r *http.Request) {
 			ErrorResponse(w, http.StatusNotFound, "File not found")
 			return
 		}
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -492,7 +492,7 @@ func (h *DownloadHandler) getChunksInfo(w http.ResponseWriter, r *http.Request) 
 			ErrorResponse(w, http.StatusNotFound, "File not found")
 			return
 		}
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
@@ -552,12 +552,36 @@ func (h *DownloadHandler) downloadChunk(w http.ResponseWriter, r *http.Request) 
 			ErrorResponse(w, http.StatusNotFound, "File not found")
 			return
 		}
-		ErrorResponse(w, http.StatusInternalServerError, err.Error())
+		InternalErrorResponse(w, err)
 		return
 	}
 
 	if file.UserID != userID {
 		ErrorResponse(w, http.StatusForbidden, "Access denied")
+		return
+	}
+
+	// Verify the requested chunk hash belongs to this file's manifest
+	if file.ManifestID == nil || *file.ManifestID == "" {
+		ErrorResponse(w, http.StatusBadRequest, "File has no content")
+		return
+	}
+
+	manifest, err := h.db.GetManifest(r.Context(), *file.ManifestID)
+	if err != nil {
+		ErrorResponse(w, http.StatusInternalServerError, "Failed to get file manifest")
+		return
+	}
+
+	chunkBelongsToFile := false
+	for _, ch := range manifest.Chunks {
+		if ch == chunkHash {
+			chunkBelongsToFile = true
+			break
+		}
+	}
+	if !chunkBelongsToFile {
+		ErrorResponse(w, http.StatusForbidden, "Chunk does not belong to this file")
 		return
 	}
 
@@ -605,11 +629,16 @@ func (h *DownloadHandler) convertManifest(dbManifest *db.Manifest) *chunk.Manife
 	chunks := make([]chunk.ChunkInfo, len(dbManifest.Chunks))
 	var offset int64
 	for i, hash := range dbManifest.Chunks {
+		var size int
+		if ch, err := h.db.GetChunk(context.Background(), hash); err == nil {
+			size = int(ch.SizeBytes)
+		}
 		chunks[i] = chunk.ChunkInfo{
 			Hash:   hash,
 			Offset: offset,
-			Size:   0, // Size will be determined during processing
+			Size:   size,
 		}
+		offset += int64(size)
 	}
 
 	return &chunk.Manifest{

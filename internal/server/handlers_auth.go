@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/vaultdrift/vaultdrift/internal/auth"
@@ -22,6 +21,9 @@ func (h *AuthHandler) RegisterRoutes(mux *http.ServeMux) {
 	// Login
 	mux.HandleFunc("POST /api/v1/auth/login", h.login)
 
+	// TOTP verification (second factor)
+	mux.HandleFunc("POST /api/v1/auth/totp/verify", h.verifyTOTP)
+
 	// Logout (requires auth)
 	mux.Handle("POST /api/v1/auth/logout", h.requireAuth(http.HandlerFunc(h.logout)))
 
@@ -38,7 +40,7 @@ type loginRequest struct {
 // login handles user login.
 func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := DecodeJSON(r, &req); err != nil {
 		ErrorResponse(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -58,8 +60,10 @@ func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
 			ErrorResponse(w, http.StatusForbidden, "Account is disabled")
 		case auth.ErrUserLocked:
 			ErrorResponse(w, http.StatusForbidden, "Account is locked")
+		case auth.ErrPasswordChangeRequired:
+			ErrorResponse(w, http.StatusForbidden, "Password change required")
 		default:
-			ErrorResponse(w, http.StatusInternalServerError, err.Error())
+			InternalErrorResponse(w, err)
 		}
 		return
 	}
@@ -79,6 +83,46 @@ func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
 		"expires_at":    result.Tokens.ExpiresAt,
 		"session_id":    result.SessionID,
 		"username":      req.Username,
+	})
+}
+
+// totpVerifyRequest represents a TOTP verification request.
+type totpVerifyRequest struct {
+	Session string `json:"session"`
+	Code    string `json:"code"`
+}
+
+// verifyTOTP handles TOTP code verification during two-factor login.
+func (h *AuthHandler) verifyTOTP(w http.ResponseWriter, r *http.Request) {
+	var req totpVerifyRequest
+	if err := DecodeJSON(r, &req); err != nil {
+		ErrorResponse(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.Session == "" || req.Code == "" {
+		ErrorResponse(w, http.StatusBadRequest, "Session and code required")
+		return
+	}
+
+	result, err := h.authSvc.LoginWithTOTP(r.Context(), req.Session, req.Code, "", "web", r.RemoteAddr, r.UserAgent())
+	if err != nil {
+		switch err {
+		case auth.ErrInvalidSession:
+			ErrorResponse(w, http.StatusUnauthorized, "Invalid or expired TOTP session")
+		case auth.ErrInvalidTOTP:
+			ErrorResponse(w, http.StatusUnauthorized, "Invalid TOTP code")
+		default:
+			InternalErrorResponse(w, err)
+		}
+		return
+	}
+
+	SuccessResponse(w, map[string]any{
+		"token":         result.Tokens.AccessToken,
+		"refresh_token": result.Tokens.RefreshToken,
+		"expires_at":    result.Tokens.ExpiresAt,
+		"session_id":    result.SessionID,
 	})
 }
 
@@ -111,7 +155,7 @@ func (h *AuthHandler) refresh(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		RefreshToken string `json:"refresh_token"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := DecodeJSON(r, &req); err != nil {
 		ErrorResponse(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -129,7 +173,7 @@ func (h *AuthHandler) refresh(w http.ResponseWriter, r *http.Request) {
 		case auth.ErrSessionExpired:
 			ErrorResponse(w, http.StatusUnauthorized, "Session expired")
 		default:
-			ErrorResponse(w, http.StatusInternalServerError, err.Error())
+			InternalErrorResponse(w, err)
 		}
 		return
 	}

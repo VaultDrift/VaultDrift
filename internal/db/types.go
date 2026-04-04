@@ -22,7 +22,6 @@ type User struct {
 	AvatarChunkHash     *string    `json:"-"`
 	Status              string     `json:"status"`
 	PasswordChangeRequired bool    `json:"password_change_required"`
-	PasswordChangedAt   *time.Time `json:"password_changed_at"`
 	LastLoginAt         *time.Time `json:"last_login_at"`
 	CreatedAt           time.Time  `json:"created_at"`
 	UpdatedAt           time.Time  `json:"updated_at"`

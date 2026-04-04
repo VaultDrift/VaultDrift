@@ -1,10 +1,12 @@
 package webdav
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -15,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vaultdrift/vaultdrift/internal/chunk"
 	"github.com/vaultdrift/vaultdrift/internal/db"
 	"github.com/vaultdrift/vaultdrift/internal/storage"
 	"github.com/vaultdrift/vaultdrift/internal/vfs"
@@ -31,13 +34,18 @@ const (
 	MethodUnlock    = "UNLOCK"
 )
 
+// CredentialValidator checks username/password credentials and returns the
+// authenticated user ID, or an empty string if the credentials are invalid.
+type CredentialValidator func(ctx context.Context, username, password string) (userID string, ok bool)
+
 // Handler implements a WebDAV Class 2 compliant server
 type Handler struct {
-	vfs       *vfs.VFS
-	db        *db.Manager
-	storage   storage.Backend
-	lockStore *LockStore
-	basePath  string
+	vfs         *vfs.VFS
+	db          *db.Manager
+	storage     storage.Backend
+	lockStore   *LockStore
+	basePath    string
+	validateCreds CredentialValidator
 }
 
 // NewHandler creates a new WebDAV handler
@@ -49,6 +57,11 @@ func NewHandler(vfsService *vfs.VFS, database *db.Manager, store storage.Backend
 		lockStore: NewLockStore(),
 		basePath:  basePath,
 	}
+}
+
+// SetCredentialValidator sets the function used to validate Basic Auth credentials.
+func (h *Handler) SetCredentialValidator(v CredentialValidator) {
+	h.validateCreds = v
 }
 
 // ServeHTTP implements http.Handler
@@ -174,7 +187,7 @@ func (h *Handler) streamChunks(ctx context.Context, manifest *db.Manifest, w htt
 	return nil
 }
 
-// handlePut handles PUT requests for file upload
+// handlePut handles PUT requests for file upload using CDC chunking.
 func (h *Handler) handlePut(w http.ResponseWriter, r *http.Request, webdavPath string) {
 	userID := h.getUserID(r)
 	if userID == "" {
@@ -212,7 +225,6 @@ func (h *Handler) handlePut(w http.ResponseWriter, r *http.Request, webdavPath s
 		return
 	}
 
-	// Use LimitReader to prevent memory exhaustion
 	limitedReader := io.LimitReader(r.Body, maxUploadSize)
 	data, err := io.ReadAll(limitedReader)
 	if err != nil {
@@ -220,28 +232,101 @@ func (h *Handler) handlePut(w http.ResponseWriter, r *http.Request, webdavPath s
 		return
 	}
 
-	// Calculate checksum
+	// Calculate file checksum
 	checksum := sha256.Sum256(data)
-	checksumStr := fmt.Sprintf("%x", checksum)
+	checksumStr := hex.EncodeToString(checksum[:])
 
+	// CDC chunk the data
+	chunker := chunk.DefaultChunker()
+	cdcChunks, cdcData, err := chunker.ChunkWithData(bytes.NewReader(data))
+	if err != nil {
+		h.sendError(w, http.StatusInternalServerError, "Failed to chunk data")
+		return
+	}
+
+	// Deduplicate and store each CDC chunk
+	chunkHashes := make([]string, 0, len(cdcChunks))
+	for i, ci := range cdcChunks {
+		exists, err := h.db.ChunkExists(r.Context(), ci.Hash)
+		if err != nil {
+			h.sendError(w, http.StatusInternalServerError, "Failed to check chunk existence")
+			return
+		}
+
+		if exists {
+			if err := h.db.IncrementRefCount(r.Context(), ci.Hash); err != nil {
+				h.sendError(w, http.StatusInternalServerError, "Failed to update chunk ref count")
+				return
+			}
+		} else {
+			if err := h.storage.Put(r.Context(), ci.Hash, cdcData[i]); err != nil {
+				h.sendError(w, http.StatusInternalServerError, "Failed to store chunk")
+				return
+			}
+			storageBackend := h.storage.Type()
+			dbChunk := &db.Chunk{
+				Hash:           ci.Hash,
+				SizeBytes:      int64(ci.Size),
+				StorageBackend: storageBackend,
+				StoragePath:    ci.Hash[:2] + "/" + ci.Hash + ".chunk",
+				RefCount:       1,
+				IsEncrypted:    false,
+				CreatedAt:      time.Now(),
+			}
+			if err := h.db.CreateChunk(r.Context(), dbChunk); err != nil {
+				h.sendError(w, http.StatusInternalServerError, "Failed to create chunk record")
+				return
+			}
+		}
+		chunkHashes = append(chunkHashes, ci.Hash)
+	}
+
+	var fileID string
 	if isNew {
-		// Create new file using VFS
-		_, err := h.vfs.CreateFile(r.Context(), userID, parentID, fileName, detectContentType(fileName, data), int64(len(data)))
+		file, err := h.vfs.CreateFile(r.Context(), userID, parentID, fileName, detectContentType(fileName, data), int64(len(data)))
 		if err != nil {
 			h.sendError(w, http.StatusInternalServerError, "Failed to create file")
 			return
 		}
+		fileID = file.ID
 	} else {
-		// Update existing file
-		updates := map[string]any{
-			"size_bytes": int64(len(data)),
-			"checksum":   checksumStr,
-			"mime_type":  detectContentType(fileName, data),
-		}
-		if err := h.db.UpdateFile(r.Context(), existing.ID, updates); err != nil {
-			h.sendError(w, http.StatusInternalServerError, "Failed to update file")
-			return
-		}
+		fileID = existing.ID
+	}
+
+	// Create manifest with all chunk hashes
+	manifestRand := make([]byte, 16)
+	if _, err := rand.Read(manifestRand); err != nil {
+		h.sendError(w, http.StatusInternalServerError, "Failed to generate manifest ID")
+		return
+	}
+	manifestID := "manifest_" + hex.EncodeToString(manifestRand)
+
+	manifest := &db.Manifest{
+		ID:         manifestID,
+		FileID:     fileID,
+		Version:    1,
+		SizeBytes:  int64(len(data)),
+		Chunks:     chunkHashes,
+		ChunkCount: len(chunkHashes),
+		Checksum:   checksumStr,
+		DeviceID:   "webdav",
+		CreatedAt:  time.Now(),
+	}
+	if err := h.db.CreateManifest(r.Context(), manifest); err != nil {
+		h.sendError(w, http.StatusInternalServerError, "Failed to create manifest")
+		return
+	}
+
+	// Update file record with manifest ID and metadata
+	updates := map[string]any{
+		"manifest_id": manifestID,
+		"size_bytes":  int64(len(data)),
+		"checksum":    checksumStr,
+		"mime_type":   detectContentType(fileName, data),
+	}
+	if err := h.db.UpdateFile(r.Context(), fileID, updates); err != nil {
+		h.sendError(w, http.StatusInternalServerError, "Failed to update file")
+		return
 	}
 
 	if isNew {
@@ -606,9 +691,20 @@ func (h *Handler) handleUnlock(w http.ResponseWriter, r *http.Request, webdavPat
 // Helper methods
 
 func (h *Handler) getUserID(r *http.Request) string {
-	if userID, ok := r.Context().Value("user_id").(string); ok {
+	// First check context (set by JWT/API token auth middleware)
+	if userID, ok := r.Context().Value("user_id").(string); ok && userID != "" {
 		return userID
 	}
+
+	// Fall back to HTTP Basic Auth for WebDAV clients (Windows Explorer, Cyberduck, etc.)
+	if h.validateCreds != nil {
+		if username, password, ok := r.BasicAuth(); ok {
+			if userID, valid := h.validateCreds(r.Context(), username, password); valid {
+				return userID
+			}
+		}
+	}
+
 	return ""
 }
 

@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/vaultdrift/vaultdrift/internal/db"
@@ -17,6 +18,7 @@ type Manager struct {
 	storage   storage.Backend
 	ctx       context.Context
 	cancel    context.CancelFunc
+	wg        sync.WaitGroup
 }
 
 // NewManager creates a new worker manager
@@ -62,12 +64,17 @@ func (m *Manager) Start() {
 
 	// Start results processor
 	go m.processResults()
+
+	// Start expired session cleanup (runs every 15 minutes)
+	m.wg.Add(1)
+	go m.cleanupSessionsLoop()
 }
 
 // Stop stops the worker manager
 func (m *Manager) Stop() {
 	log.Println("Stopping background worker manager...")
 	m.cancel()
+	m.wg.Wait()
 	m.scheduler.Stop()
 	m.pool.Stop()
 }
@@ -95,5 +102,38 @@ func (m *Manager) processResults() {
 		} else {
 			log.Printf("Job %s completed successfully", result.JobID)
 		}
+	}
+}
+
+// cleanupSessionsLoop periodically removes expired sessions from the database.
+// It runs every 15 minutes and stops when the manager context is cancelled.
+func (m *Manager) cleanupSessionsLoop() {
+	defer m.wg.Done()
+
+	// Run once immediately at startup
+	m.runSessionCleanup()
+
+	ticker := time.NewTicker(15 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-m.ctx.Done():
+			return
+		case <-ticker.C:
+			m.runSessionCleanup()
+		}
+	}
+}
+
+// runSessionCleanup executes a single session cleanup pass.
+func (m *Manager) runSessionCleanup() {
+	count, err := m.db.CleanupExpiredSessions(m.ctx)
+	if err != nil {
+		log.Printf("Session cleanup failed: %v", err)
+		return
+	}
+	if count > 0 {
+		log.Printf("Cleaned up %d expired session(s)", count)
 	}
 }
